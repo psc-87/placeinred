@@ -1,0 +1,73 @@
+snippets and stuff i think ill need later
+------------------------------------------------------------------------------------
+//typedef void (*_SetMotionType)(TESObjectREFR* ref, int aeMotionType, bool abAllowActivate);
+//RelocPtr <_SetMotionType> SetMotionType(0x010D7B50);
+//MEMBER_FN_PREFIX(TESObjectREFR);
+//DEFINE_MEMBER_FN(SetMotionType, void, 0x010D7B50, int motiontype, bool allowactivate);
+------------------------------------------------------------------------------------
+workshop mode
+80 3D ? ? ? ? 00 74 0E C6 07 02 48 8B 5C 24 30 48 83 C4 20 5F C3
+
+Fallout4.exe+328E84 - 80 3D 09ABB402 00     - cmp byte ptr [Fallout4.exe+2E73994],00 { (1),0 }
+Fallout4.exe+328E8B - 74 0E                 - je Fallout4.exe+328E9B
+Fallout4.exe+328E8D - C6 07 02              - mov byte ptr [rdi],02 { 2 }
+Fallout4.exe+328E90 - 48 8B 5C 24 30        - mov rbx,[rsp+30]
+Fallout4.exe+328E95 - 48 83 C4 20           - add rsp,20 { 32 }
+Fallout4.exe+328E99 - 5F                    - pop rdi
+Fallout4.exe+328E9A - C3                    - ret 
+
+------------------------------------------------------------------------------------
+typedef UInt32(*_Enable_Native)(TESObjectREFR *ref, bool unkBool);
+typedef UInt32(*_Disable_Native)(TESObjectREFR *ref, bool unkBool);
+typedef void(*_SetScale)(TESObjectREFR *ref, float scale);
+
+MEMBER_FN_PREFIX(TESObjectREFR);
+DEFINE_MEMBER_FN(GetReferenceName, const char *, 0x004BF350);
+DEFINE_MEMBER_FN(GetWorldspace, TESWorldSpace*, 0x004C3000);
+DEFINE_MEMBER_FN(GetInventoryWeight, float, 0x004B3B20);
+DEFINE_MEMBER_FN(GetCarryWeight, float, 0x00BEACF0);
+DEFINE_MEMBER_FN(SetScale, void, 0x003F8490, float scale);
+DEFINE_MEMBER_FN(ModScale, void, 0x003F8490, float scale);
+DEFINE_MEMBER_FN(SetMotionType, void, 0x010D7B50, int motiontype, bool allowactivate);
+DEFINE_MEMBER_FN(GetReferenceName, const char *, 0x0040B640);
+DEFINE_MEMBER_FN(GetWorldspace, TESWorldSpace*, 0x0040F170);
+DEFINE_MEMBER_FN(GetInventoryWeight, float, 0x00400350);
+DEFINE_MEMBER_FN(GetCarryWeight, float, 0x00D870D0);
+------------------------------------------------------------------------------------
+Function SetMotionType(int aeMotionType, bool abAllowActivate = true) native
+int Property Motion_Fixed = 0 AutoReadOnly
+int Property Motion_Dynamic = 1 AutoReadOnly
+int Property Motion_Keyframed = 2 AutoReadOnly
+------------------------------------------------------------------------------------
+
+
+float GetScale(const TESObjectREFR *obj)
+{
+    return (((float) obj->scale) *0.01);
+}
+
+CALL_MEMBER_FN(newObj, SetScale)(scale);
+
+//Set Position/Rotation
+MoveRefrToPosition(newObj, &nullHandle, toolObj->parentCell, worldspace, &newObj->pos, &newObj->rot);
+//Call twice to fix jitter effect
+MoveRefrToPosition(newObj, &nullHandle, toolObj->parentCell, worldspace, &newObj->pos, &newObj->rot);
+
+
+
+bool poop(VirtualMachine* vm, UInt32 stackId, TESObjectREFR* refr, int motion, bool acti)
+{
+	return true;
+}
+bool poop2(StaticFunctionTag* base, TESObjectREFR* ref, int motion, bool allowactivate)
+{
+	PlaceInRedLog.FormattedMessage("testfunction called");
+	if (ref) {
+		PlaceInRedLog.FormattedMessage("ref exists");
+		return true;
+	}
+	else {
+		PlaceInRedLog.FormattedMessage("no ref!");
+		return false;
+	}
+}
