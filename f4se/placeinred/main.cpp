@@ -1,65 +1,127 @@
 #include "main.h"
-#include "papyrus.h"
+
+// SetScale
+static _SetScale SetScale = nullptr;
+static uintptr_t* SetScaleFinder = nullptr;
+static SInt32 SetScaleRel32 = 0;
+
+// GetScale
+static _GetScale GetScale = nullptr;
+static uintptr_t* GetScaleFinder = nullptr;
+static SInt32 GetScaleRel32 = 0;
+
+// Console command creation and parsing. Credit to reg2k
+static _GetConsoleArg GetConsoleArg; // to view console command arguments from user after execution
+static uintptr_t* ConsoleArgFinder = nullptr; // memory pattern to find the real function
+static SInt32 ConsoleArgRel32 = 0; // rel32 set later on
+static const char* s_CommandToBorrow = "GameComment"; // the command we will replace (full name)
+static ObScriptCommand* s_hijackedCommand = nullptr;
+static ObScriptParam* s_hijackedCommandParams = nullptr;
+
+// First Console Command
+static uintptr_t* FirstConsoleFinder = nullptr; // pattern where the first console command is referenced
+static ObScriptCommand* FirstConsole = nullptr; // obscriptcommand first console command
+static SInt32 FirstConsoleRel32 = 0; // rel32 set later on
+
+// First ObScript Command
+static uintptr_t* FirstObScriptFinder = nullptr; // pattern where the first Obscript command is referenced
+static ObScriptCommand* FirstObScript = nullptr; // obscriptcommand first console command
+static SInt32 FirstObScriptRel32 = 0; // rel32 set later on
+
+//gconsole console print
+static uintptr_t* GConsoleFinder = nullptr; //pattern to find g_console
+static SInt32 GConsoleRel32 = 0; // rel32 set later on
+static uintptr_t GConsoleStatic; // g_console
+
+// Currently grabbed or highlighted workshop reference
+// multi level pointer. always contains the highlighted or grabbed ref
+static uintptr_t* CurrentRefFinder = nullptr; // pattern to help us find it
+static uintptr_t CurrentRefBase; // base address
+static SInt32 CurrentRefBaseRel32 = 0; // rel32 of base address
+
+static uintptr_t bsfadenode_offsets[] = { 0x0, 0x0, 0x10 }; //bsfadenode
+static size_t bsfadenode_count = sizeof(bsfadenode_offsets) / sizeof(bsfadenode_offsets[0]);
+static uintptr_t ref_offsets[] = { 0x0, 0x0, 0x10, 0x110 }; //TESObjectREFR
+static size_t ref_count = sizeof(ref_offsets) / sizeof(ref_offsets[0]);
+static uintptr_t bhknicoll_offsets[] = { 0x0, 0x0, 0x10, 0x100 }; //bhkNiCollisionObject
+static size_t bhknicoll_count = sizeof(bhknicoll_offsets) / sizeof(bhknicoll_offsets[0]);
+
+// workshop mode finder
+static uintptr_t* WorkshopModeFinder = nullptr;
+static SInt32 WorkshopModeFinderRel32 = 0;
+static uintptr_t WorkshopModeBoolAddress;
+
+// Pointers to memory patterns
+static uintptr_t* CHANGE_A = nullptr;
+static uintptr_t* CHANGE_B = nullptr;
+static uintptr_t* CHANGE_C = nullptr;
+static uintptr_t* CHANGE_D = nullptr;
+static uintptr_t* CHANGE_E = nullptr;
+static uintptr_t* CHANGE_F = nullptr;
+static uintptr_t* CHANGE_G = nullptr;
+static uintptr_t* CHANGE_H = nullptr;
+static uintptr_t* CHANGE_I = nullptr;
+static uintptr_t* RED = nullptr;
+static uintptr_t* YELLOW = nullptr;
+static uintptr_t* WSTIMER = nullptr;
+static uintptr_t* WSTIMER2 = nullptr;
+static uintptr_t* GROUNDSNAP = nullptr;
+static uintptr_t* OBJECTSNAP = nullptr;
+static uintptr_t* WORKSHOPSIZE = nullptr;
+static uintptr_t* OUTLINES = nullptr;
+static uintptr_t* ACHIEVEMENTS = nullptr;
+static uintptr_t* ZOOM = nullptr;
+static uintptr_t* ROTATE = nullptr;
+
+// For proper toggling
+static UInt8 CHANGE_C_OLDCODE[7];
+static UInt8 CHANGE_C_NEWCODE[7] = { 0x31, 0xC0, 0x90, 0x90, 0x90, 0x90, 0x90 }; //xor al,al;nop x5
+static UInt8 CHANGE_D_OLDCODE[7];
+static UInt8 CHANGE_D_NEWCODE[7] = { 0x31, 0xC0, 0xB0, 0x01, 0x90, 0x90, 0x90 }; //xor al,al;mov al,01;nop x3
+static UInt8 CHANGE_F_OLDCODE[2] = { 0x88, 0x05 };
+static UInt8 CHANGE_F_NEWCODE[2] = { 0xEB, 0x04 };
+static UInt8 CHANGE_I_OLDCODE[2] = { 0x74, 0x35 };
+static UInt8 CHANGE_I_NEWCODE[2] = { 0xEB, 0x30 };
+static UInt8 YELLOW_NEWCODE[3] = { 0x90, 0x90, 0x90 }; //nop x3
+static UInt8 YELLOW_OLDCODE[3] = { 0x8B, 0x58, 0x14 };
+static UInt8 WSTIMER2_OLDCODE[8];
+static UInt8 WSTIMER2_NEWCODE[8] = { 0x0F, 0x57, 0xC0, 0x90, 0x90, 0x90, 0x90, 0x90 }; //xorps xmm0,xmm0; nop x5
+
+// Allows achievements with mods and prevents game adding [MODS] in save file name
+static UInt8 ACHIEVEMENTS_NEWCODE[3] = { 0x30, 0xC0, 0xC3 }; // xor al, al; ret
+static UInt8 ACHIEVEMENTS_OLDCODE[4] = { 0x48, 0x83, 0xEC, 0x28 }; // sub rsp,28
+
+// Object snap
+static UInt8 OBJECTSNAP_OLDCODE[8];
+static UInt64 OBJECTSNAP_NEWCODE = 0x9090909090F6570F; // xorps xmm6, xmm6; nop x5
+
+// Workshop size
+static SInt32 WORKSHOPSIZE_REL32 = 0;
+static UInt8 WORKSHOPSIZE_DRAWS_OLDCODE[6];
+static UInt8 WORKSHOPSIZE_DRAWS_NEWCODE[6] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
+static UInt8 WORKSHOPSIZE_TRIANGLES_OLDCODE[6];
+static UInt8 WORKSHOPSIZE_TRIANGLES_NEWCODE[6] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
+
+// zoom and rotate
+static SInt32 ZOOM_REL32 = 0;
+static SInt32 ROTATE_REL32 = 0;
+static UInt8 fZOOM_DEFAULT[4] = { 0x00, 0x00, 0x20, 0x41 }; // 10.0f
+static UInt8 fZOOM_SLOWED[4] = { 0x00, 0x00, 0x80, 0x3F }; // 1.0f
+static UInt8 fROTATE_DEFAULT[4] = { 0x00, 0x00, 0xA0, 0x40 }; // 5.0f
+static UInt8 fROTATE_SLOWED[4] = { 0x00, 0x00, 0x00, 0x3F }; // 0.5f
+
+// On and off switches for toggling. These are the baked in defaults
+static bool PLACEINRED_ENABLED = false; //false, toggled on during F4SEPlugin_Load
+static bool ACHIEVEMENTS_ENABLED = false; //false, toggled on during F4SEPlugin_Load
+static bool OBJECTSNAP_ENABLED = true; //true, game default
+static bool GROUNDSNAP_ENABLED = true; // true, game default
+static bool SLOW_ENABLED = false; // false, game default
+static bool WORKSHOPSIZE_ENABLED = false; // false, game default
+static bool OUTLINES_ENABLED = true; // true, game default
 
 
 extern "C" {
 
-// Credit to reg2k. Simple function to read memory. 
-static bool ReadMemory(uintptr_t addr, void* data, size_t len) {
-	UInt32 oldProtect;
-	if (VirtualProtect((void*)addr, len, PAGE_EXECUTE_READWRITE, &oldProtect)) {
-		memcpy(data, (void*)addr, len);
-		if (VirtualProtect((void*)addr, len, oldProtect, &oldProtect)) {
-			return true;
-		}
-	}
-	return false;
-}
-
-// return rel32 from a pattern match
-static SInt32 GetRel32FromPattern(uintptr_t* pattern, UInt64 rel32start, UInt64 rel32end, UInt64 specialmodify = 0x0)
-{
-	// rel32start=bytes to reach start of rel32 from pattern
-	// rel32end=bytes to reach end of rel32 from pattern
-	if (pattern) {
-		SInt32 relish32 = 0;
-		if (!ReadMemory(uintptr_t(pattern) + rel32start, &relish32, sizeof(SInt32))) {
-			return false;
-		}
-		relish32 = (((uintptr_t(pattern) + rel32end) + relish32) - RelocationManager::s_baseAddr) + (specialmodify);
-		if (relish32 > 0) {
-			return relish32;
-		} else {
-			return 0;
-		}
-	}
-	return 0;	
-}
-
-static uintptr_t* ReadPointer(uintptr_t address, uintptr_t offset) {
-	uintptr_t* result = nullptr;
-	if (ReadMemory(address + offset, &result, sizeof(uintptr_t))) {
-		return result;
-	}
-	else {
-		return nullptr;
-	}
-}
-
-static uintptr_t* GetMultiLevelPointer(uintptr_t baseAddress, uintptr_t* offsets, size_t numOffsets) {
-	uintptr_t address = baseAddress;
-	for (size_t i = 0; i < numOffsets; ++i) {
-		address = uintptr_t(ReadPointer(address, offsets[i]));
-		if (!address)
-			break;  // Break if encountered a nullptr
-	}
-	return reinterpret_cast<uintptr_t*>(address);
-}
-
-// To switch with strings
-static constexpr unsigned int PIR_Switch(const char* s, int off = 0) {
-	return !s[off] ? 5381 : (PIR_Switch(s, off + 1) * 33) ^ s[off];
-}
 
 // copied from f4se and modified for use with a pattern
 static void PIR_ConsolePrint(const char* fmt, ...)
@@ -128,7 +190,7 @@ static bool PIR_InWorkshopMode() {
 static bool PIR_SetCurrentRefScale(float newScale) {
 
 	if (CurrentRefFinder && CurrentRefBase && SetScaleFinder && GetScaleFinder && PIR_InWorkshopMode()) {
-		uintptr_t* refptr = GetMultiLevelPointer(CurrentRefBase, RefOffsets, RefOffsetCount);
+		uintptr_t* refptr = GetMultiLevelPointer(CurrentRefBase, ref_offsets, ref_count);
 		TESObjectREFR* ref = reinterpret_cast<TESObjectREFR*>(refptr);
 		if (ref) {
 			SetScale(ref, newScale);
@@ -143,7 +205,7 @@ static bool PIR_SetCurrentRefScale(float newScale) {
 static bool PIR_ModCurrentRefScale(float fMultiplyAmount) {
 
 	if (CurrentRefFinder && CurrentRefBase && SetScaleFinder && GetScaleFinder && PIR_InWorkshopMode()) {
-		uintptr_t* refptr = GetMultiLevelPointer(CurrentRefBase, RefOffsets, RefOffsetCount);
+		uintptr_t* refptr = GetMultiLevelPointer(CurrentRefBase, ref_offsets, ref_count);
 		TESObjectREFR* ref = reinterpret_cast<TESObjectREFR*>(refptr);
 		if (ref) {
 			float oldscale = GetScale(ref);
@@ -156,6 +218,35 @@ static bool PIR_ModCurrentRefScale(float fMultiplyAmount) {
 		}
 	}
 	return false;
+}
+
+// Dump all console and obscript commands to the log file
+static bool PIR_DumpCmds2Log()
+{
+
+	if (FirstConsole == nullptr || FirstObScript == nullptr) {
+		return false;
+	}
+
+	for (ObScriptCommand* iter = FirstConsole; iter->opcode < (kObScript_NumConsoleCommands + kObScript_ConsoleOpBase); ++iter) {
+		if (iter) {
+
+			uintptr_t rel32 = (uintptr_t)&(iter->execute) - RelocationManager::s_baseAddr;
+
+			pluginLog.FormattedMessage("Console|%08X|Fallout4.exe+0x%08X|%s|%s|%X|%X|%s", iter->opcode, rel32, iter->shortName, iter->longName, iter->numParams, iter->needsParent, iter->helpText);
+		}
+	}
+
+	for (ObScriptCommand* iter = FirstObScript; iter->opcode < (kObScript_NumObScriptCommands + kObScript_ScriptOpBase); ++iter) {
+		if (iter) {
+
+			uintptr_t rel32 = (uintptr_t) & (iter->execute) - RelocationManager::s_baseAddr;
+
+			pluginLog.FormattedMessage("ObScript|%08X|Fallout4.exe+0x%08X|%s|%s|%X|%X|%s", iter->opcode, rel32, iter->shortName, iter->longName, iter->numParams, iter->needsParent, iter->helpText);
+		}
+	}
+
+	return true;
 }
 
 static bool Toggle_Outlines()
@@ -320,28 +411,6 @@ static bool Toggle_PlaceInRed()
 	return false;
 }
 
-static bool PIR_DumpCmds2Log()
-{
-
-	if (FirstConsole == nullptr || FirstObScript == nullptr) {
-		return false;
-	}
-
-	for (ObScriptCommand* iter = FirstConsole; iter->opcode < (kObScript_NumConsoleCommands + kObScript_ConsoleOpBase); ++iter) {
-		if (iter) {
-			pluginLog.FormattedMessage("Console|%08X|%s|%s|%X|np?%X|%s", iter->opcode, iter->shortName, iter->longName, iter->numParams, iter->needsParent, iter->helpText);
-		}
-	}
-
-	for (ObScriptCommand* iter = FirstObScript; iter->opcode < (kObScript_NumObScriptCommands + kObScript_ScriptOpBase); ++iter) {
-		if (iter) {
-			pluginLog.FormattedMessage("ObScript|%08X|%s|%s|%X|np?%X|%s", iter->opcode, iter->shortName, iter->longName, iter->numParams, iter->needsParent, iter->helpText);
-		}
-	}
-
-	return true;
-}
-
 static bool pirdebug(int option = 0) {
 	
 
@@ -349,29 +418,46 @@ static bool pirdebug(int option = 0) {
 	// pir d1 d2 d3 d4 d5 d6
 	//dump commands to log file
 	if (option == 0) {
-		pluginLog.FormattedMessage("[pirdebug] dumping commands to log file:");
-		PIR_DumpCmds2Log();
+		pluginLog.FormattedMessage("[pirdebug] hello world!");
+		PIR_ConsolePrint("[pirdebug] hello world!");
 		return true;
 	}
 
 	//test refs
-	if (option == 1){
+	if (option == 1) {
 		if (CurrentRefFinder && CurrentRefBase) {
-			uintptr_t* refptr = GetMultiLevelPointer(CurrentRefBase, RefOffsets, RefOffsetCount);
+			uintptr_t* refptr = GetMultiLevelPointer(CurrentRefBase, ref_offsets, ref_count);
+			uintptr_t* test = GetMultiLevelPointer(CurrentRefBase, bsfadenode_offsets, bsfadenode_count);
 			TESObjectREFR* ref = reinterpret_cast<TESObjectREFR*>(refptr);
+			BSHandleRefObject* testref = reinterpret_cast<BSHandleRefObject*>(test);
+
 			if (ref) {
 				TESObjectCELL* cell = ref->parentCell;
 				TESWorldSpace* worldspace = ref->parentCell->worldSpace;
-				if (cell && worldspace) {
-					pluginLog.FormattedMessage("ref cell worldspace ok.");
-					bhkWorld* havokworld = CALL_MEMBER_FN(cell, GetHavokWorld)();
-					if (havokworld) {
-						pluginLog.FormattedMessage("havok world ok.");
-					} else { 
-						pluginLog.FormattedMessage("havok world failed."); 
-					}
-					return true;
-				}
+				bhkWorld* havokworld = CALL_MEMBER_FN(cell, GetHavokWorld)();
+				UInt8 formtype = ref->GetFormType();
+				const char* edid = ref->GetEditorID();
+				const char* fullname = ref->GetFullName();
+				UInt32 formid = ref->formID;
+				UInt32 flags = ref->flags;
+				UInt32 cellfullname = ref->parentCell->formID;
+				UInt64 rootnodeflags = ref->GetObjectRootNode()->flags;
+				UInt64 rootnodechildre = ref->GetObjectRootNode()->m_children.m_size;
+
+				if (testref->m_uiRefCount) { pluginLog.FormattedMessage("test ref m ui ref count %i", testref->m_uiRefCount); }
+
+				float Px = ref->pos.x;
+				float Py = ref->pos.y;
+				float Pz = ref->pos.z;
+				float Rx = ref->rot.z;
+				float Ry = ref->rot.z;
+				float Rz = ref->rot.z;
+				
+				pluginLog.FormattedMessage("FormType:%X\nEditorID:%s\nFullName%s\nformID:%08X\nflags:%08X\ncellFormID:%08X\nRoot Node Flags:%016X\nrootnodechildrensize:%i\nPx:%f Py:%f Pz:%f Rx:%f Ry:%f Rz:%f", formtype, edid, fullname, formid, flags, cellfullname, Px, Py, Pz, Rx, Ry, Rz);
+				
+
+				return true;
+				
 			}
 		}
 	}
@@ -390,7 +476,7 @@ static bool PIR_ExecuteConsoleCommand(void* paramInfo, void* scriptData, TESObje
 		if (consoleresult && consolearg[0]) {
 			switch (PIR_Switch(consolearg)) {
 				// debug and tests
-				case PIR_Switch("dumpcmds"): PIR_DumpCmds2Log(); break;
+				case PIR_Switch("dump"): PIR_DumpCmds2Log(); break;
 				case PIR_Switch("d0"): pirdebug(0); break;
 				case PIR_Switch("d1"): pirdebug(1); break;
 				case PIR_Switch("d2"): pirdebug(2); break;
@@ -485,7 +571,7 @@ static bool PIR_CreateConsoleCommand()
 static bool PIR_FoundRequiredMemoryPatterns()
 {
 	if (ConsoleArgFinder && FirstConsoleFinder && FirstObScriptFinder && SetScaleFinder && GetScaleFinder && CurrentRefFinder
-		&& CHANGE_A && CHANGE_B && CHANGE_C && CHANGE_D && CHANGE_E && CHANGE_F && CHANGE_G && CHANGE_H && CHANGE_I
+		&& WorkshopModeFinder && GConsoleFinder && CHANGE_A && CHANGE_B && CHANGE_C && CHANGE_D && CHANGE_E && CHANGE_F && CHANGE_G && CHANGE_H && CHANGE_I
 		&& YELLOW && RED && WSTIMER2 && GROUNDSNAP && OBJECTSNAP && OUTLINES && WORKSHOPSIZE && ZOOM && ROTATE	)
 	{
 		return true;
@@ -719,5 +805,4 @@ __declspec(dllexport) bool F4SEPlugin_Query(const F4SEInterface* f4seinterface, 
 	return true;
 }
 
-//----------------------------------------------------------------
 }

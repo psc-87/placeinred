@@ -1,11 +1,15 @@
 #include "papyrus.h"
 
-
 namespace papyrusPlaceInRed
 { 
-	void papyrusPlaceInRed::TestFunction1(StaticFunctionTag* base)
+	void TestFunction1(StaticFunctionTag* base)
 	{
-		pluginLog.FormattedMessage("[papyrusPlaceInRed::TestFunction1] it works!");
+		pluginLog.FormattedMessage("[papyrusPlaceInRed::TestFunction1] called.");
+		return;
+	}
+	void TestFunction2(StaticFunctionTag* base)
+	{
+		pluginLog.FormattedMessage("[papyrusPlaceInRed::TestFunction2] called.");
 		return;
 	}
 }
@@ -13,13 +17,21 @@ namespace papyrusPlaceInRed
 
 bool papyrusPlaceInRed::RegisterFuncs(VirtualMachine* vm)
 {
-	
-	vm->RegisterFunction(
-		new NativeFunction0 <StaticFunctionTag, void>("TestFunction1", "PlaceInRed", papyrusPlaceInRed::TestFunction1, vm));
+	if(vm){
 
-	vm->SetFunctionFlags("PlaceInRed", "TestFunction1", IFunction::kFunctionFlag_NoWait);
+		// register the functions
+		vm->RegisterFunction( new NativeFunction0 <StaticFunctionTag, void> ("TestFunction1", "PlaceInRed", papyrusPlaceInRed::TestFunction1, vm) );
+		vm->RegisterFunction( new NativeFunction0 <StaticFunctionTag, void> ("TestFunction2", "PlaceInRed", papyrusPlaceInRed::TestFunction2, vm) );
 
-	pluginLog.FormattedMessage("[papyrusPlaceInRed::RegisterFuncs] registered papyrus functions.");
-	return true;
+		// set function flags
+		vm->SetFunctionFlags("PlaceInRed", "TestFunction1", IFunction::kFunctionFlag_NoWait);
+		vm->SetFunctionFlags("PlaceInRed", "TestFunction2", IFunction::kFunctionFlag_NoWait);
+
+
+		pluginLog.FormattedMessage("[papyrusPlaceInRed::RegisterFuncs] registered papyrus functions.");
+		return true;
+	}
+	pluginLog.FormattedMessage("[papyrusPlaceInRed::RegisterFuncs] failed (no vm)! Plugin load will fail.");
+	return false;
 }
 

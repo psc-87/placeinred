@@ -39,7 +39,6 @@ namespace papyrusF4SE {
 		return -1;
 	}
 
-
 #ifdef _DEBUG
 	void TestInventoryFunc(StaticFunctionTag* base, VMRefOrInventoryObj ref)
 	{
