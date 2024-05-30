@@ -5,7 +5,7 @@
 #include "papyrus.h"
 
 // Plugin specific
-extern IDebugLog pluginLog;
+extern IDebugLog pirlog;
 static PluginHandle pluginHandle = kPluginHandle_Invalid;
 static UInt32 pluginVersion = 8;
 static const char pluginName[] = { "Place In Red" };
@@ -18,14 +18,12 @@ static F4SEObjectInterface* g_object = nullptr;
 static F4SETaskInterface* g_task = nullptr;
 
 //typedefs
-typedef void  (*_SetScale)      (TESObjectREFR* objRef, float scale);
-typedef float (*_GetScale)      (TESObjectREFR* objRef);
-typedef bool  (*_GetConsoleArg) (void* paramInfo, void* scriptData, void* opcodeOffsetPtr, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, ...);
+typedef void  (*_SetScale)				(TESObjectREFR* objRef, float scale);
+typedef float (*_GetScale)				(TESObjectREFR* objRef);
+typedef bool  (*_GetConsoleArg)			(void* paramInfo, void* scriptData, void* opcodeOffsetPtr, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, ...);
+typedef bool  (*_SetMotionType_Native)	(TESObjectREFR* ref, SInt32 motiontype, bool akAllowActivate);
 
-
-
-
-// Credit to reg2k. Simple function to read memory. 
+// Simple function to read memory (credit reg2k).
 static bool ReadMemory(uintptr_t addr, void* data, size_t len) {
 	UInt32 oldProtect;
 	if (VirtualProtect((void*)addr, len, PAGE_EXECUTE_READWRITE, &oldProtect)) {
@@ -36,7 +34,6 @@ static bool ReadMemory(uintptr_t addr, void* data, size_t len) {
 	}
 	return false;
 }
-
 // return rel32 from a pattern match
 static SInt32 GetRel32FromPattern(uintptr_t* pattern, UInt64 rel32start, UInt64 rel32end, UInt64 specialmodify = 0x0)
 {

@@ -15,7 +15,7 @@ static _GetConsoleArg GetConsoleArg; // to view console command arguments from u
 static uintptr_t* ConsoleArgFinder = nullptr; // memory pattern to find the real function
 static SInt32 ConsoleArgRel32 = 0; // rel32 set later on
 static const char* s_CommandToBorrow = "GameComment"; // the command we will replace (full name)
-static ObScriptCommand* s_hijackedCommand = nullptr;
+static ObScriptCommand* s_hijackedCommand = nullptr; 
 static ObScriptParam* s_hijackedCommandParams = nullptr;
 
 // First Console Command
@@ -122,10 +122,9 @@ static bool OUTLINES_ENABLED = true; // true, game default
 
 extern "C" {
 
-
-// copied from f4se and modified for use with a pattern
 static void PIR_ConsolePrint(const char* fmt, ...)
 {
+	// copied from f4se and modified for use with the pattern
 	if (GConsoleFinder && GConsoleStatic)
 	{
 	ConsoleManager* mgr = (ConsoleManager*)GConsoleStatic;
@@ -158,19 +157,19 @@ static void PIR_ConsolePrint(const char* fmt, ...)
 // handles f4se messages from message interface
 static void MessageInterfaceHandler(F4SEMessagingInterface::Message* msg) {
 	switch (msg->type) {
-		case F4SEMessagingInterface::kMessage_PostLoad: pluginLog.FormattedMessage("[MessageInterfaceHandler] kMessage_PostLoad"); break;
-		case F4SEMessagingInterface::kMessage_PostPostLoad: pluginLog.FormattedMessage("[MessageInterfaceHandler] kMessage_PostPostLoad"); break;
-		case F4SEMessagingInterface::kMessage_PreLoadGame: pluginLog.FormattedMessage("[MessageInterfaceHandler] kMessage_PreLoadGame"); break;
-		case F4SEMessagingInterface::kMessage_PostLoadGame: pluginLog.FormattedMessage("[MessageInterfaceHandler] kMessage_PostLoadGame"); break;
-		case F4SEMessagingInterface::kMessage_PreSaveGame: pluginLog.FormattedMessage("[MessageInterfaceHandler] kMessage_PreSaveGame"); break;
-		case F4SEMessagingInterface::kMessage_PostSaveGame: pluginLog.FormattedMessage("[MessageInterfaceHandler] kMessage_PostSaveGame"); break;
-		case F4SEMessagingInterface::kMessage_DeleteGame: pluginLog.FormattedMessage("[MessageInterfaceHandler] kMessage_DeleteGame"); break;
-		case F4SEMessagingInterface::kMessage_InputLoaded: pluginLog.FormattedMessage("[MessageInterfaceHandler] kMessage_InputLoaded"); break;
-		case F4SEMessagingInterface::kMessage_NewGame: pluginLog.FormattedMessage("[MessageInterfaceHandler] kMessage_NewGame"); break;
-		case F4SEMessagingInterface::kMessage_GameLoaded: pluginLog.FormattedMessage("[MessageInterfaceHandler] kMessage_GameLoaded"); break;
-		case F4SEMessagingInterface::kMessage_GameDataReady: pluginLog.FormattedMessage("[MessageInterfaceHandler] kMessage_GameDataReady"); break;
+		case F4SEMessagingInterface::kMessage_PostLoad: pirlog.FormattedMessage("[MessageInterfaceHandler] kMessage_PostLoad"); break;
+		case F4SEMessagingInterface::kMessage_PostPostLoad: pirlog.FormattedMessage("[MessageInterfaceHandler] kMessage_PostPostLoad"); break;
+		case F4SEMessagingInterface::kMessage_PreLoadGame: pirlog.FormattedMessage("[MessageInterfaceHandler] kMessage_PreLoadGame"); break;
+		case F4SEMessagingInterface::kMessage_PostLoadGame: pirlog.FormattedMessage("[MessageInterfaceHandler] kMessage_PostLoadGame"); break;
+		case F4SEMessagingInterface::kMessage_PreSaveGame: pirlog.FormattedMessage("[MessageInterfaceHandler] kMessage_PreSaveGame"); break;
+		case F4SEMessagingInterface::kMessage_PostSaveGame: pirlog.FormattedMessage("[MessageInterfaceHandler] kMessage_PostSaveGame"); break;
+		case F4SEMessagingInterface::kMessage_DeleteGame: pirlog.FormattedMessage("[MessageInterfaceHandler] kMessage_DeleteGame"); break;
+		case F4SEMessagingInterface::kMessage_InputLoaded: pirlog.FormattedMessage("[MessageInterfaceHandler] kMessage_InputLoaded"); break;
+		case F4SEMessagingInterface::kMessage_NewGame: pirlog.FormattedMessage("[MessageInterfaceHandler] kMessage_NewGame"); break;
+		case F4SEMessagingInterface::kMessage_GameLoaded: pirlog.FormattedMessage("[MessageInterfaceHandler] kMessage_GameLoaded"); break;
+		case F4SEMessagingInterface::kMessage_GameDataReady: pirlog.FormattedMessage("[MessageInterfaceHandler] kMessage_GameDataReady"); break;
 
-		default: pluginLog.FormattedMessage("[MessageInterfaceHandler] kMessage_UNKNOWN type: %0X", msg->type); break;
+		default: pirlog.FormattedMessage("[MessageInterfaceHandler] kMessage_UNKNOWN type: %0X", msg->type); break;
 	}
 }
 
@@ -194,7 +193,6 @@ static bool PIR_SetCurrentRefScale(float newScale) {
 		TESObjectREFR* ref = reinterpret_cast<TESObjectREFR*>(refptr);
 		if (ref) {
 			SetScale(ref, newScale);
-			PIR_ConsolePrint("Scale modified.");
 			return true;
 		}
 	}
@@ -213,7 +211,6 @@ static bool PIR_ModCurrentRefScale(float fMultiplyAmount) {
 			if (newScale > 9.999999f) { newScale = 9.999999f; }
 			if (newScale < 0.000001f) { newScale = 0.000001f; }
 			SetScale(ref, newScale);
-			PIR_ConsolePrint("Scale modified.");
 			return true;
 		}
 	}
@@ -221,7 +218,7 @@ static bool PIR_ModCurrentRefScale(float fMultiplyAmount) {
 }
 
 // Dump all console and obscript commands to the log file
-static bool PIR_DumpCmds2Log()
+static bool PIR_DumpCmds()
 {
 
 	if (FirstConsole == nullptr || FirstObScript == nullptr) {
@@ -233,7 +230,7 @@ static bool PIR_DumpCmds2Log()
 
 			uintptr_t rel32 = (uintptr_t)&(iter->execute) - RelocationManager::s_baseAddr;
 
-			pluginLog.FormattedMessage("Console|%08X|Fallout4.exe+0x%08X|%s|%s|%X|%X|%s", iter->opcode, rel32, iter->shortName, iter->longName, iter->numParams, iter->needsParent, iter->helpText);
+			pirlog.FormattedMessage("Console|%08X|Fallout4.exe+0x%08X|%s|%s|%X|%X|%s", iter->opcode, rel32, iter->shortName, iter->longName, iter->numParams, iter->needsParent, iter->helpText);
 		}
 	}
 
@@ -242,7 +239,7 @@ static bool PIR_DumpCmds2Log()
 
 			uintptr_t rel32 = (uintptr_t) & (iter->execute) - RelocationManager::s_baseAddr;
 
-			pluginLog.FormattedMessage("ObScript|%08X|Fallout4.exe+0x%08X|%s|%s|%X|%X|%s", iter->opcode, rel32, iter->shortName, iter->longName, iter->numParams, iter->needsParent, iter->helpText);
+			pirlog.FormattedMessage("ObScript|%08X|Fallout4.exe+0x%08X|%s|%s|%X|%X|%s", iter->opcode, rel32, iter->shortName, iter->longName, iter->numParams, iter->needsParent, iter->helpText);
 		}
 	}
 
@@ -411,59 +408,69 @@ static bool Toggle_PlaceInRed()
 	return false;
 }
 
-static bool pirdebug(int option = 0) {
-	
+static void PIR_LogRef() {
 
-	//1 function to debug stuff. option relates to:
-	// pir d1 d2 d3 d4 d5 d6
-	//dump commands to log file
-	if (option == 0) {
-		pluginLog.FormattedMessage("[pirdebug] hello world!");
-		PIR_ConsolePrint("[pirdebug] hello world!");
-		return true;
-	}
+	if (CurrentRefFinder && CurrentRefBase) {
+		uintptr_t* refpointer = GetMultiLevelPointer(CurrentRefBase, ref_offsets, ref_count);
+		uintptr_t* bsfadenodepointer = GetMultiLevelPointer(CurrentRefBase, bsfadenode_offsets, bsfadenode_count);
+		TESObjectREFR* ref = reinterpret_cast<TESObjectREFR*>(refpointer);
+		BSFadeNode* bsfadenode = reinterpret_cast<BSFadeNode*>(bsfadenodepointer);
+		if (ref && bsfadenode) {
+			pirlog.FormattedMessage("-------------------------------------------------------------------------------------");
 
-	//test refs
-	if (option == 1) {
-		if (CurrentRefFinder && CurrentRefBase) {
-			uintptr_t* refptr = GetMultiLevelPointer(CurrentRefBase, ref_offsets, ref_count);
-			uintptr_t* test = GetMultiLevelPointer(CurrentRefBase, bsfadenode_offsets, bsfadenode_count);
-			TESObjectREFR* ref = reinterpret_cast<TESObjectREFR*>(refptr);
-			BSHandleRefObject* testref = reinterpret_cast<BSHandleRefObject*>(test);
+			//TESObjectCELL*	cell =				ref->parentCell;
+			//TESWorldSpace*	worldspace =		ref->parentCell->worldSpace;
+			//bhkWorld*		havokworld =		CALL_MEMBER_FN(cell, GetHavokWorld)();
+			UInt8			formtype =			ref->GetFormType();
+			const char*		edid =				ref->GetEditorID();
+			const char*		fullname =			ref->GetFullName();
+			UInt32			formid =			ref->formID;
+			UInt32			flags =				ref->flags;
+			UInt32			cellformid =		ref->parentCell->formID;
+			UInt64			rootflags =			ref->GetObjectRootNode()->flags;
+			const char*		rootname =			ref->GetObjectRootNode()->m_name.c_str();
+			//UInt16			collisionflags =	ref->GetObjectRootNode()->m_spCollisionObject.m_pObject->GetAsBhkNiCollisionObject()->m_uFlags;
+			UInt16			rootchildren =		ref->GetObjectRootNode()->m_children.m_size;
+			float			Px =				ref->pos.x;
+			float			Py =				ref->pos.y;
+			float			Pz =				ref->pos.z;
+			float			Rx =				ref->rot.z;
+			float			Ry =				ref->rot.z;
+			float			Rz =				ref->rot.z;
+			
+			pirlog.FormattedMessage("Position|Rotation       : %f %f %f|%f %f %f", Px, Py, Pz, Rx, Ry, Rz);
+			pirlog.FormattedMessage("root->m_name            : %s", rootname);
+			pirlog.FormattedMessage("root->m_children        : %02X", rootchildren);
+			pirlog.FormattedMessage("ref->formtype           : %01X", formtype);
+			pirlog.FormattedMessage("ref->formID             : %04X", formid);
+			pirlog.FormattedMessage("ref->editorID           : %s", edid);
+			pirlog.FormattedMessage("ref->fullname           : %s", fullname);
+			pirlog.FormattedMessage("ref->flags              : %04X", flags);
+			pirlog.FormattedMessage("ref->parentcell->formID : %04X", cellformid);
 
-			if (ref) {
-				TESObjectCELL* cell = ref->parentCell;
-				TESWorldSpace* worldspace = ref->parentCell->worldSpace;
-				bhkWorld* havokworld = CALL_MEMBER_FN(cell, GetHavokWorld)();
-				UInt8 formtype = ref->GetFormType();
-				const char* edid = ref->GetEditorID();
-				const char* fullname = ref->GetFullName();
-				UInt32 formid = ref->formID;
-				UInt32 flags = ref->flags;
-				UInt32 cellfullname = ref->parentCell->formID;
-				UInt64 rootnodeflags = ref->GetObjectRootNode()->flags;
-				UInt64 rootnodechildre = ref->GetObjectRootNode()->m_children.m_size;
+			pirlog.FormattedMessage("-------------------------------------------------------------------------------------");
 
-				if (testref->m_uiRefCount) { pluginLog.FormattedMessage("test ref m ui ref count %i", testref->m_uiRefCount); }
-
-				float Px = ref->pos.x;
-				float Py = ref->pos.y;
-				float Pz = ref->pos.z;
-				float Rx = ref->rot.z;
-				float Ry = ref->rot.z;
-				float Rz = ref->rot.z;
-				
-				pluginLog.FormattedMessage("FormType:%X\nEditorID:%s\nFullName%s\nformID:%08X\nflags:%08X\ncellFormID:%08X\nRoot Node Flags:%016X\nrootnodechildrensize:%i\nPx:%f Py:%f Pz:%f Rx:%f Ry:%f Rz:%f", formtype, edid, fullname, formid, flags, cellfullname, Px, Py, Pz, Rx, Ry, Rz);
-				
-
-				return true;
-				
-			}
 		}
 	}
+}
 
-	//return true just in case i forgot
-	return true;
+static void pirdebug(int debugfunc)
+{
+	if (debugfunc) {
+		switch (debugfunc) {
+			case 0: PIR_ConsolePrint("Debug function 0. Hello world!"); break; //pir d0
+			case 1: PIR_LogRef(); PIR_ConsolePrint("Ref logged to file."); break; //pir d1
+			case 2: PIR_ConsolePrint("Hello world!"); break;
+			case 3: PIR_ConsolePrint("Hello world!"); break;
+			case 4: PIR_ConsolePrint("Hello world!"); break;
+			case 5: PIR_ConsolePrint("Hello world!"); break;
+			case 6: PIR_ConsolePrint("Hello world!"); break;
+			case 7: PIR_ConsolePrint("Hello world!"); break;
+			case 8: PIR_ConsolePrint("Hello world!"); break;
+			case 9: PIR_ConsolePrint("Hello world!"); break;
+			default:  break;
+		}
+	}
 }
 
 static bool PIR_ExecuteConsoleCommand(void* paramInfo, void* scriptData, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, double* result, void* opcodeOffsetPtr)
@@ -476,7 +483,7 @@ static bool PIR_ExecuteConsoleCommand(void* paramInfo, void* scriptData, TESObje
 		if (consoleresult && consolearg[0]) {
 			switch (PIR_Switch(consolearg)) {
 				// debug and tests
-				case PIR_Switch("dump"): PIR_DumpCmds2Log(); break;
+				case PIR_Switch("dump"): PIR_DumpCmds(); break;
 				case PIR_Switch("d0"): pirdebug(0); break;
 				case PIR_Switch("d1"): pirdebug(1); break;
 				case PIR_Switch("d2"): pirdebug(2); break;
@@ -526,11 +533,11 @@ static bool PIR_ExecuteConsoleCommand(void* paramInfo, void* scriptData, TESObje
 			}
 			return true;
 		} else {
-			pluginLog.FormattedMessage("[PIR_ExecuteConsoleCommand] Failed to execute the console command. Try restarting the game or check for conflicting mods.");
+			pirlog.FormattedMessage("[PIR_ExecuteConsoleCommand] Failed to execute the console command. Try restarting the game or check for conflicting mods.");
 			return false;
 		}
 	} else {
-		pluginLog.FormattedMessage("[PIR_ExecuteConsoleCommand] Failed to execute the console command. Try restarting the game or check for conflicting mods.");
+		pirlog.FormattedMessage("[PIR_ExecuteConsoleCommand] Failed to execute the console command. Try restarting the game or check for conflicting mods.");
 		return false;
 	}
 }
@@ -582,40 +589,40 @@ static bool PIR_FoundRequiredMemoryPatterns()
 
 static void PIR_LogMemoryPatterns()
 {	
-	pluginLog.FormattedMessage("------------------------------------------------------------------------------");
-	pluginLog.FormattedMessage("Base: %p", RelocationManager::s_baseAddr);
-	pluginLog.FormattedMessage("ConsoleArgFinder: %p | rel32: 0x%08X", ConsoleArgFinder, ConsoleArgRel32);
-	pluginLog.FormattedMessage("FirstConsoleFinder: %p | rel32: 0x%08X", FirstConsoleFinder, FirstConsoleRel32);
-	pluginLog.FormattedMessage("FirstObScriptFinder: %p | rel32: 0x%08X", FirstObScriptFinder, FirstObScriptRel32);
-	pluginLog.FormattedMessage("GConsoleFinder: %p | rel32: 0x%08X | %p", GConsoleFinder, GConsoleRel32, GConsoleStatic);
-	pluginLog.FormattedMessage("SetScaleFinder: %p | rel32: 0x%08X", SetScaleFinder, SetScaleRel32);
-	pluginLog.FormattedMessage("GetScaleFinder: %p | rel32: 0x%08X", GetScaleFinder, GetScaleRel32);
-	pluginLog.FormattedMessage("CurrentRefFinder: %p | rel32: 0x%08X | %p", CurrentRefFinder, CurrentRefBaseRel32, CurrentRefBase);
-	pluginLog.FormattedMessage("WorkshopModeFinder: %p | rel32: 0x%08X | %p", WorkshopModeFinder, WorkshopModeFinderRel32, WorkshopModeBoolAddress);
-	pluginLog.FormattedMessage("CHANGE_A: %p", CHANGE_A);
-	pluginLog.FormattedMessage("CHANGE_B: %p", CHANGE_B);
-	pluginLog.FormattedMessage("CHANGE_C: %p | original bytes: %02X%02X%02X%02X%02X%02X%02X", CHANGE_C, CHANGE_C_OLDCODE[0], CHANGE_C_OLDCODE[1], CHANGE_C_OLDCODE[2], CHANGE_C_OLDCODE[3], CHANGE_C_OLDCODE[4], CHANGE_C_OLDCODE[5], CHANGE_C_OLDCODE[6]);
-	pluginLog.FormattedMessage("CHANGE_D: %p | original bytes: %02X%02X%02X%02X%02X%02X%02X", CHANGE_D, CHANGE_D_OLDCODE[0], CHANGE_D_OLDCODE[1], CHANGE_D_OLDCODE[2], CHANGE_D_OLDCODE[3], CHANGE_D_OLDCODE[4], CHANGE_D_OLDCODE[5], CHANGE_D_OLDCODE[6]);
-	pluginLog.FormattedMessage("CHANGE_E: %p", CHANGE_E);
-	pluginLog.FormattedMessage("CHANGE_F: %p", CHANGE_F);
-	pluginLog.FormattedMessage("CHANGE_G: %p", CHANGE_G);
-	pluginLog.FormattedMessage("CHANGE_H: %p", CHANGE_H);
-	pluginLog.FormattedMessage("CHANGE_I: %p", CHANGE_I);
-	pluginLog.FormattedMessage("RED: %p", RED);
-	pluginLog.FormattedMessage("YELLOW: %p", YELLOW);
-	pluginLog.FormattedMessage("WSTIMER2: %p | original bytes: %02X%02X%02X%02X%02X%02X%02X%02X", WSTIMER2, WSTIMER2_OLDCODE[0], WSTIMER2_OLDCODE[1], WSTIMER2_OLDCODE[2], WSTIMER2_OLDCODE[3], WSTIMER2_OLDCODE[4], WSTIMER2_OLDCODE[5], WSTIMER2_OLDCODE[6], WSTIMER2_OLDCODE[7]);
-	pluginLog.FormattedMessage("GROUNDSNAP: %p", GROUNDSNAP);
-	pluginLog.FormattedMessage("OBJECTSNAP: %p | original bytes: %02X%02X%02X%02X%02X%02X%02X%02X", OBJECTSNAP, OBJECTSNAP_OLDCODE[0], OBJECTSNAP_OLDCODE[1], OBJECTSNAP_OLDCODE[2], OBJECTSNAP_OLDCODE[3], OBJECTSNAP_OLDCODE[4], OBJECTSNAP_OLDCODE[5], OBJECTSNAP_OLDCODE[6], OBJECTSNAP_OLDCODE[7]);
-	pluginLog.FormattedMessage("OUTLINES: %p", OUTLINES);
-	pluginLog.FormattedMessage("ZOOM: %p", ZOOM);
-	pluginLog.FormattedMessage("ZOOM_FLOAT: %p", uintptr_t(ZOOM) + (static_cast<uintptr_t>(ZOOM_REL32) + 8));
-	pluginLog.FormattedMessage("ROTATE: %p", ROTATE);
-	pluginLog.FormattedMessage("ROTATE_FLOAT: %p", uintptr_t(ROTATE) + (static_cast<uintptr_t>(ROTATE_REL32) + 8));
-	pluginLog.FormattedMessage("ACHIEVEMENTS: %p", ACHIEVEMENTS);
-	pluginLog.FormattedMessage("WORKSHOPSIZE_DRAWS_OLDCODE: %p | original bytes: %02X%02X%02X%02X%02X%02X", WORKSHOPSIZE, WORKSHOPSIZE_DRAWS_OLDCODE[0], WORKSHOPSIZE_DRAWS_OLDCODE[1], WORKSHOPSIZE_DRAWS_OLDCODE[2], WORKSHOPSIZE_DRAWS_OLDCODE[3], WORKSHOPSIZE_DRAWS_OLDCODE[4], WORKSHOPSIZE_DRAWS_OLDCODE[5]);
-	pluginLog.FormattedMessage("WORKSHOPSIZE_TRIANGLES_OLDCODE: %p | original bytes: %02X%02X%02X%02X%02X%02X", WORKSHOPSIZE + 0x0A, WORKSHOPSIZE_TRIANGLES_OLDCODE[0], WORKSHOPSIZE_TRIANGLES_OLDCODE[1], WORKSHOPSIZE_TRIANGLES_OLDCODE[2], WORKSHOPSIZE_TRIANGLES_OLDCODE[3], WORKSHOPSIZE_TRIANGLES_OLDCODE[4], WORKSHOPSIZE_TRIANGLES_OLDCODE[5]);
-	pluginLog.FormattedMessage("WORKSHOPSIZE_CURRENT: %p", uintptr_t(WORKSHOPSIZE) + (static_cast<uintptr_t>(WORKSHOPSIZE_REL32) + 6));
-	pluginLog.FormattedMessage("------------------------------------------------------------------------------");
+	pirlog.FormattedMessage("------------------------------------------------------------------------------");
+	pirlog.FormattedMessage("Base: %p", RelocationManager::s_baseAddr);
+	pirlog.FormattedMessage("ConsoleArgFinder: %p | rel32: 0x%08X", ConsoleArgFinder, ConsoleArgRel32);
+	pirlog.FormattedMessage("FirstConsoleFinder: %p | rel32: 0x%08X", FirstConsoleFinder, FirstConsoleRel32);
+	pirlog.FormattedMessage("FirstObScriptFinder: %p | rel32: 0x%08X", FirstObScriptFinder, FirstObScriptRel32);
+	pirlog.FormattedMessage("GConsoleFinder: %p | rel32: 0x%08X | %p", GConsoleFinder, GConsoleRel32, GConsoleStatic);
+	pirlog.FormattedMessage("SetScaleFinder: %p | rel32: 0x%08X", SetScaleFinder, SetScaleRel32);
+	pirlog.FormattedMessage("GetScaleFinder: %p | rel32: 0x%08X", GetScaleFinder, GetScaleRel32);
+	pirlog.FormattedMessage("CurrentRefFinder: %p | rel32: 0x%08X | %p", CurrentRefFinder, CurrentRefBaseRel32, CurrentRefBase);
+	pirlog.FormattedMessage("WorkshopModeFinder: %p | rel32: 0x%08X | %p", WorkshopModeFinder, WorkshopModeFinderRel32, WorkshopModeBoolAddress);
+	pirlog.FormattedMessage("CHANGE_A: %p", CHANGE_A);
+	pirlog.FormattedMessage("CHANGE_B: %p", CHANGE_B);
+	pirlog.FormattedMessage("CHANGE_C: %p | original bytes: %02X%02X%02X%02X%02X%02X%02X", CHANGE_C, CHANGE_C_OLDCODE[0], CHANGE_C_OLDCODE[1], CHANGE_C_OLDCODE[2], CHANGE_C_OLDCODE[3], CHANGE_C_OLDCODE[4], CHANGE_C_OLDCODE[5], CHANGE_C_OLDCODE[6]);
+	pirlog.FormattedMessage("CHANGE_D: %p | original bytes: %02X%02X%02X%02X%02X%02X%02X", CHANGE_D, CHANGE_D_OLDCODE[0], CHANGE_D_OLDCODE[1], CHANGE_D_OLDCODE[2], CHANGE_D_OLDCODE[3], CHANGE_D_OLDCODE[4], CHANGE_D_OLDCODE[5], CHANGE_D_OLDCODE[6]);
+	pirlog.FormattedMessage("CHANGE_E: %p", CHANGE_E);
+	pirlog.FormattedMessage("CHANGE_F: %p", CHANGE_F);
+	pirlog.FormattedMessage("CHANGE_G: %p", CHANGE_G);
+	pirlog.FormattedMessage("CHANGE_H: %p", CHANGE_H);
+	pirlog.FormattedMessage("CHANGE_I: %p", CHANGE_I);
+	pirlog.FormattedMessage("RED: %p", RED);
+	pirlog.FormattedMessage("YELLOW: %p", YELLOW);
+	pirlog.FormattedMessage("WSTIMER2: %p | original bytes: %02X%02X%02X%02X%02X%02X%02X%02X", WSTIMER2, WSTIMER2_OLDCODE[0], WSTIMER2_OLDCODE[1], WSTIMER2_OLDCODE[2], WSTIMER2_OLDCODE[3], WSTIMER2_OLDCODE[4], WSTIMER2_OLDCODE[5], WSTIMER2_OLDCODE[6], WSTIMER2_OLDCODE[7]);
+	pirlog.FormattedMessage("GROUNDSNAP: %p", GROUNDSNAP);
+	pirlog.FormattedMessage("OBJECTSNAP: %p | original bytes: %02X%02X%02X%02X%02X%02X%02X%02X", OBJECTSNAP, OBJECTSNAP_OLDCODE[0], OBJECTSNAP_OLDCODE[1], OBJECTSNAP_OLDCODE[2], OBJECTSNAP_OLDCODE[3], OBJECTSNAP_OLDCODE[4], OBJECTSNAP_OLDCODE[5], OBJECTSNAP_OLDCODE[6], OBJECTSNAP_OLDCODE[7]);
+	pirlog.FormattedMessage("OUTLINES: %p", OUTLINES);
+	pirlog.FormattedMessage("ZOOM: %p", ZOOM);
+	pirlog.FormattedMessage("ZOOM_FLOAT: %p", uintptr_t(ZOOM) + (static_cast<uintptr_t>(ZOOM_REL32) + 8));
+	pirlog.FormattedMessage("ROTATE: %p", ROTATE);
+	pirlog.FormattedMessage("ROTATE_FLOAT: %p", uintptr_t(ROTATE) + (static_cast<uintptr_t>(ROTATE_REL32) + 8));
+	pirlog.FormattedMessage("ACHIEVEMENTS: %p", ACHIEVEMENTS);
+	pirlog.FormattedMessage("WORKSHOPSIZE_DRAWS_OLDCODE: %p | original bytes: %02X%02X%02X%02X%02X%02X", WORKSHOPSIZE, WORKSHOPSIZE_DRAWS_OLDCODE[0], WORKSHOPSIZE_DRAWS_OLDCODE[1], WORKSHOPSIZE_DRAWS_OLDCODE[2], WORKSHOPSIZE_DRAWS_OLDCODE[3], WORKSHOPSIZE_DRAWS_OLDCODE[4], WORKSHOPSIZE_DRAWS_OLDCODE[5]);
+	pirlog.FormattedMessage("WORKSHOPSIZE_TRIANGLES_OLDCODE: %p | original bytes: %02X%02X%02X%02X%02X%02X", WORKSHOPSIZE + 0x0A, WORKSHOPSIZE_TRIANGLES_OLDCODE[0], WORKSHOPSIZE_TRIANGLES_OLDCODE[1], WORKSHOPSIZE_TRIANGLES_OLDCODE[2], WORKSHOPSIZE_TRIANGLES_OLDCODE[3], WORKSHOPSIZE_TRIANGLES_OLDCODE[4], WORKSHOPSIZE_TRIANGLES_OLDCODE[5]);
+	pirlog.FormattedMessage("WORKSHOPSIZE_CURRENT: %p", uintptr_t(WORKSHOPSIZE) + (static_cast<uintptr_t>(WORKSHOPSIZE_REL32) + 6));
+	pirlog.FormattedMessage("------------------------------------------------------------------------------");
 }
 
 static void PIR_Init()
@@ -715,18 +722,18 @@ static void PIR_Init()
 __declspec(dllexport) bool F4SEPlugin_Load(const F4SEInterface* f4seinterface)
 {
 	// start log
-	pluginLog.OpenRelative(CSIDL_MYDOCUMENTS, pluginLogFile);
-	pluginLog.FormattedMessage("[F4SEPlugin_Load] Plugin loaded!");
+	pirlog.OpenRelative(CSIDL_MYDOCUMENTS, pluginLogFile);
+	pirlog.FormattedMessage("[F4SEPlugin_Load] Plugin loaded!");
 
 	// get a plugin handle
 	pluginHandle = f4seinterface->GetPluginHandle();
 	if (!pluginHandle) { 
-		pluginLog.FormattedMessage("[F4SEPlugin_Load] Plugin load failed! Couldn't get a plugin handle!"); 
+		pirlog.FormattedMessage("[F4SEPlugin_Load] Plugin load failed! Couldn't get a plugin handle!"); 
 		return false; 
 	}
 
-	pluginLog.FormattedMessage("[F4SEPlugin_Load] Got a plugin handle!");
-	pluginLog.FormattedMessage("[F4SEPlugin_Load] Locating memory patterns...");
+	pirlog.FormattedMessage("[F4SEPlugin_Load] Got a plugin handle!");
+	pirlog.FormattedMessage("[F4SEPlugin_Load] Locating memory patterns...");
 
 	// init and log memory patterns
 	PIR_Init();
@@ -735,52 +742,52 @@ __declspec(dllexport) bool F4SEPlugin_Load(const F4SEInterface* f4seinterface)
 	// check memory patterns
 	if (!PIR_FoundRequiredMemoryPatterns())
 	{
-		pluginLog.FormattedMessage("[F4SEPlugin_Load] Plugin load failed! Couldnt find required memory patterns. Check for conflicting mods.");
+		pirlog.FormattedMessage("[F4SEPlugin_Load] Plugin load failed! Couldnt find required memory patterns. Check for conflicting mods.");
 		return false;
 	}
 
 	// papyrus interface
 	g_papyrus = (F4SEPapyrusInterface*)f4seinterface->QueryInterface(kInterface_Papyrus);
 	if (!g_papyrus) {
-		pluginLog.FormattedMessage("[F4SEPlugin_Load] Plugin load failed! Failed to set papyrus interface.");
+		pirlog.FormattedMessage("[F4SEPlugin_Load] Plugin load failed! Failed to set papyrus interface.");
 		return false;
 	}
 	
 	// messaging interface
 	g_messaging = (F4SEMessagingInterface*)f4seinterface->QueryInterface(kInterface_Messaging);
 	if (!g_messaging) {
-		pluginLog.FormattedMessage("[F4SEPlugin_Load] Plugin load failed! Failed to set messaging interface.");
+		pirlog.FormattedMessage("[F4SEPlugin_Load] Plugin load failed! Failed to set messaging interface.");
 		return false;
 	}
 
 	// object interface
 	g_object = (F4SEObjectInterface*)f4seinterface->QueryInterface(kInterface_Object);
 	if (!g_object) {
-		pluginLog.FormattedMessage("[F4SEPlugin_Load] Plugin load failed! Failed to set object interface.");
+		pirlog.FormattedMessage("[F4SEPlugin_Load] Plugin load failed! Failed to set object interface.");
 		return false;
 	}
 		
 	// register papyrus functions
-	pluginLog.FormattedMessage("[F4SEPlugin_Load] Registering papyrus functions");
+	pirlog.FormattedMessage("[F4SEPlugin_Load] Registering papyrus functions");
 	g_papyrus->Register(papyrusPlaceInRed::RegisterFuncs);
 
 	// register message listener handler
-	pluginLog.FormattedMessage("[F4SEPlugin_Load] Registering message listeners.");
+	pirlog.FormattedMessage("[F4SEPlugin_Load] Registering message listeners.");
 	g_messaging->RegisterListener(pluginHandle, "F4SE", MessageInterfaceHandler);
 
 	// attempt to create the console command
-	pluginLog.FormattedMessage("[F4SEPlugin_Load] Creating console command.");
+	pirlog.FormattedMessage("[F4SEPlugin_Load] Creating console command.");
 	if (!PIR_CreateConsoleCommand()){
-		pluginLog.FormattedMessage("[F4SEPlugin_Load] Failed to create console command! Plugin will run with hard coded default options.");
+		pirlog.FormattedMessage("[F4SEPlugin_Load] Failed to create console command! Plugin will run with hard coded default options.");
 	}
 
 	// toggle defaults
-	pluginLog.FormattedMessage("[F4SEPlugin_Load] Toggling on defaults.");
+	pirlog.FormattedMessage("[F4SEPlugin_Load] Toggling on defaults.");
 	Toggle_PlaceInRed();
 	Toggle_Achievements();
 
 	// plugin loaded
-	pluginLog.FormattedMessage("[F4SEPlugin_Load] Plugin load finished!");
+	pirlog.FormattedMessage("[F4SEPlugin_Load] Plugin load finished!");
 	return true;
 }
 
