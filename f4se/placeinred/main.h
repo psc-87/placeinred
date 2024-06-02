@@ -4,12 +4,22 @@
 #include "f4se.h"
 #include "papyrus.h"
 
+#define SET_CURRENT_FUNCTION_STRING const char* thisfunc = __func__;
+
+//typedefs
+typedef void  (*_SetScale)              (TESObjectREFR* objRef, float scale);
+typedef float (*_GetScale)              (TESObjectREFR* objRef);
+typedef bool  (*_GetConsoleArg)         (void* paramInfo, void* scriptData, void* opcodeOffsetPtr, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, ...);
+typedef bool  (*_SetMotionType_Native)  (VirtualMachine* vm, UInt32 stackId, TESObjectREFR* ref, SInt32 motiontype, bool akAllowActivate);
+typedef void  (*_ExecuteCommand)        (const char* str);
+
 // Plugin specific
 extern IDebugLog pirlog;
 static PluginHandle pluginHandle = kPluginHandle_Invalid;
 static UInt32 pluginVersion = 8;
 static const char pluginName[] = { "Place In Red" };
 static const char pluginLogFile[] = { "\\My Games\\Fallout4\\F4SE\\PlaceInRed.log" };
+static const char* pirunknowncommandmsg = { "PlaceInRed (pir) usage:\n pir toggle (pir 1) toggle place in red\n pir osnap (pir 2) toggle object snapping\n pir gsnap (pir 3) toggle ground snapping\n pir slow (pir 4) slow object rotation and zoom speed\n pir workshopsize (pir 5) unlimited workshop build size\n pir outlines (pir 6) toggle object outlines\n pir achievements (pir 7) toggle achievement feature\n pir scaleup1   (also: 1, 5, 10, 25, 50, 100) scale up percent\n pir scaledown1   (also: 1, 5, 10, 25, 50, 75) scale down percent\n" };
 
 // F4SE interfaces
 static F4SEPapyrusInterface* g_papyrus = nullptr;
@@ -17,11 +27,6 @@ static F4SEMessagingInterface* g_messaging = nullptr;
 static F4SEObjectInterface* g_object = nullptr;
 static F4SETaskInterface* g_task = nullptr;
 
-//typedefs
-typedef void  (*_SetScale)				(TESObjectREFR* objRef, float scale);
-typedef float (*_GetScale)				(TESObjectREFR* objRef);
-typedef bool  (*_GetConsoleArg)			(void* paramInfo, void* scriptData, void* opcodeOffsetPtr, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, ...);
-typedef bool  (*_SetMotionType_Native)	(TESObjectREFR* ref, SInt32 motiontype, bool akAllowActivate);
 
 // Simple function to read memory (credit reg2k).
 static bool ReadMemory(uintptr_t addr, void* data, size_t len) {
@@ -34,6 +39,7 @@ static bool ReadMemory(uintptr_t addr, void* data, size_t len) {
 	}
 	return false;
 }
+
 // return rel32 from a pattern match
 static SInt32 GetRel32FromPattern(uintptr_t* pattern, UInt64 rel32start, UInt64 rel32end, UInt64 specialmodify = 0x0)
 {
@@ -54,6 +60,8 @@ static SInt32 GetRel32FromPattern(uintptr_t* pattern, UInt64 rel32start, UInt64 
 	}
 	return 0;
 }
+
+// get pointer from address and offset
 static uintptr_t* ReadPointer(uintptr_t address, uintptr_t offset) {
 	uintptr_t* result = nullptr;
 	if (ReadMemory(address + offset, &result, sizeof(uintptr_t))) {
@@ -63,6 +71,8 @@ static uintptr_t* ReadPointer(uintptr_t address, uintptr_t offset) {
 		return nullptr;
 	}
 }
+
+// get multi level pointer
 static uintptr_t* GetMultiLevelPointer(uintptr_t baseAddress, uintptr_t* offsets, size_t numOffsets) {
 	uintptr_t address = baseAddress;
 	for (size_t i = 0; i < numOffsets; ++i) {

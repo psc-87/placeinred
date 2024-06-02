@@ -2,6 +2,7 @@ snippets and stuff i think ill need later
 ------------------------------------------------------------------------------------
 //typedef void (*_SetMotionType)(TESObjectREFR* ref, int aeMotionType, bool abAllowActivate);
 //RelocPtr <_SetMotionType> SetMotionType(0x010D7B50);
+//RelocPtr <_SetMotionType> SetMotionType(0x010653F0);
 //Fallout4.exe+10D7B50 - 48 89 5C 24 08        - mov [rsp+08],rbx
 
 //MEMBER_FN_PREFIX(TESObjectREFR);

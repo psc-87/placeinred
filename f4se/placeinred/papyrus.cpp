@@ -1,25 +1,31 @@
 #include "papyrus.h"
 
-RelocAddr <_SetMotionType_Native> SetMotionType_Native(0x010D7B50);
 
-
-namespace papyrusPlaceInRed
+namespace papyrusPIR
 { 
-	void TestFunction1(VirtualMachine* vm, UInt32 stackId, TESObjectREFR* refr, SInt32 motiontype, bool akAllowActivate)
+	const char* logprefix = { "papyrusPIR" };
+
+	void funky1(StaticFunctionTag* s)
 	{
-		pirlog.FormattedMessage("[papyrusPlaceInRed::TestStaticFunction1] called.");
 		return;
 	}
 }
 
 
-bool papyrusPlaceInRed::RegisterFuncs(VirtualMachine* vm)
+bool papyrusPIR::RegisterFuncs(VirtualMachine* vm)
 {
+	SET_CURRENT_FUNCTION_STRING
+
 	if(vm){
-		pirlog.FormattedMessage("[papyrusPlaceInRed::RegisterFuncs] registered papyrus functions.");
+
+		vm->RegisterFunction(new NativeFunction0<StaticFunctionTag, void>("funky1", "PlaceInRed", papyrusPIR::funky1, vm));
+		vm->SetFunctionFlags("PlaceInRed", "funky1", IFunction::kFunctionFlag_NoWait);
+
+		pirlog.FormattedMessage("[%S::%S] registered papyrus functions.");
 		return true;
 	}
-	pirlog.FormattedMessage("[papyrusPlaceInRed::RegisterFuncs] no vm!");
+
+	pirlog.FormattedMessage("[%S::%S] no vm!", logprefix, thisfunc);
 	return false;
 }
 

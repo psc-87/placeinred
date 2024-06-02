@@ -4,7 +4,7 @@
 
 
 
-namespace papyrusPlaceInRed
+namespace papyrusPIR
 {
 	bool RegisterFuncs(VirtualMachine* vm);
 }

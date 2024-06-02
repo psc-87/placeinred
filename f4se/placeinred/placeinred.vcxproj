@@ -60,6 +60,12 @@
       <AdditionalLibraryDirectories>..\f4se\x64\Release\;..\f4se_common\x64\Release\;..\x64\Release\;..\placeinred\x64\Release\;..\..\common\common\x64_vc11\Release\</AdditionalLibraryDirectories>
       <AdditionalDependencies>f4se_1_10_194.lib;$(CoreLibraryDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>xcopy "C:\vs_f4se\f4se\x64\Release\PlaceInRed.dll" "D:\SteamLibrary\steamapps\common\Fallout 4\Data\F4SE\Plugins\" /Y /Q</Command>
+    </PostBuildEvent>
+    <PostBuildEvent>
+      <Message>Copying PlaceInRed.dll to plugins folder</Message>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
