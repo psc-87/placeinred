@@ -172,15 +172,6 @@ namespace pir {
 		return nullptr;
 	}
 
-
-
-
-
-
-
-
-
-
 	// dump cell refids and position to the log file
 	static void DumpCellRefs()
 	{
