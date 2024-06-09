@@ -15,6 +15,6 @@
     <None Include="exports.def" />
   </ItemGroup>
   <ItemGroup>
-    <Text Include="zzzPlaceInRedNotes.txt" />
+    <Text Include="test.cpp" />
   </ItemGroup>
 </Project>

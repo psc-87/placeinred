@@ -73,6 +73,7 @@
     </ClCompile>
     <ClCompile Include="pattern.cpp" />
     <ClCompile Include="papyrus.cpp" />
+    <Text Include="test.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="f4se.h" />
@@ -92,9 +93,6 @@
       <LinkLibraryDependencies>true</LinkLibraryDependencies>
       <UseLibraryDependencyInputs>false</UseLibraryDependencyInputs>
     </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
-    <Text Include="zzzPlaceInRedNotes.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
