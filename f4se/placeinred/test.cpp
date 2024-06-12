@@ -50,6 +50,8 @@
 
 
 /* ModAngle
+* 
+* typedef void  (*_ModAngleXYZ)           (TESObjectREFR* objRef, float scale);
 static _ModAngleXYZ ModAngleX = nullptr;
 static _ModAngleXYZ ModAngleY = nullptr;
 static _ModAngleXYZ ModAngleZ = nullptr;
@@ -115,6 +117,22 @@ static SInt32 SUCSMLookRel32 = 0;*/
 	SUCSMLookRel32 = SUCSMSpeedRel32 + 0x00000018;
 }*/
 
+
+/*
+* g_player
+Fallout4.exe+27A270 - 48 8B 05 290ADC02     - mov rax,[Fallout4.exe+303ACA0] { (20F59141350) }
+Fallout4.exe+27A277 - F6 80 000E0000 10     - test byte ptr [rax+00000E00],10 { 16 }
+Fallout4.exe+27A27E - 0F85 F8000000         - jne Fallout4.exe+27A37C
+Fallout4.exe+27A284 - 48 8B 46 18           - mov rax,[rsi+18]
+Fallout4.exe+27A288 - 49 8B DE              - mov rbx,r14
+Fallout4.exe+27A28B - 8B 48 10              - mov ecx,[rax+10]
+Fallout4.exe+27A28E - 8B 05 74F79E02        - mov eax,[Fallout4.exe+2C69A08] { (47) }
+Fallout4.exe+27A294 - 44 8D 51 02           - lea r10d,[rcx+02]
+
+
+
+
+*/
 
 
 const char pluginName[] = { "ClipboardExtension" };
