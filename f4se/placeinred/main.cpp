@@ -40,14 +40,13 @@ static SInt32 GConsoleRel32 = 0; // rel32 set later on
 static uintptr_t GConsoleStatic; // g_console
 
 // Currently grabbed or highlighted workshop reference
-// multi level pointer. always contains the highlighted or grabbed ref
 static uintptr_t* CurrentRefFinder = nullptr; // pattern to help us find it
 static uintptr_t CurrentRefBase; // base address
 static SInt32 CurrentRefBaseRel32 = 0; // rel32 of base address
 
 // useful offsets
 static UInt64 bsfadenode_offsets[] = { 0x0, 0x0, 0x10 }; //bsfadenode
-static UInt64 ref_offsets[] = { 0x0, 0x0, 0x10, 0x110 }; //TESObjectREFR
+static UInt64 ref_offsets[] = { 0x0, 0x0, 0x10, 0x110 }; //current workshop TESObjectREFR
 static UInt64 collision_offsets[] = { 0x0, 0x0, 0x10, 0x100 }; //bhkNiCollisionObject
 static size_t collision_count = sizeof(collision_offsets) / sizeof(collision_offsets[0]);
 static size_t ref_count = sizeof(ref_offsets) / sizeof(ref_offsets[0]);
@@ -76,7 +75,7 @@ static uintptr_t* CHANGE_H = nullptr;
 static uintptr_t* CHANGE_I = nullptr;
 static uintptr_t* RED = nullptr;
 static uintptr_t* YELLOW = nullptr;
-static uintptr_t* WSTIMER2 = nullptr;
+static uintptr_t* WSTIMER = nullptr;
 static uintptr_t* GROUNDSNAP = nullptr;
 static uintptr_t* OBJECTSNAP = nullptr;
 static uintptr_t* WSSIZE = nullptr;
@@ -96,8 +95,13 @@ static UInt8 CHANGE_I_OLDCODE[2] = { 0x74, 0x35 };
 static UInt8 CHANGE_I_NEWCODE[2] = { 0xEB, 0x30 };
 static UInt8 YELLOW_NEWCODE[3] = { 0x90, 0x90, 0x90 }; //nop x3
 static UInt8 YELLOW_OLDCODE[3] = { 0x8B, 0x58, 0x14 };
-static UInt8 WSTIMER2_OLDCODE[8];
-static UInt8 WSTIMER2_NEWCODE[8] = { 0x0F, 0x57, 0xC0, 0x90, 0x90, 0x90, 0x90, 0x90 }; //xorps xmm0,xmm0; nop x5
+static UInt8 WSTIMER_OLDCODE[6] = { 0x0F, 0x85, 0xAB, 0x00, 0x00, 0x00 }; //jne
+static UInt8 WSTIMER_NEWCODE[6] = { 0xE9, 0xAC, 0x00, 0x00, 0x00, 0x90 }; //jmp instead
+
+// new ws timer
+// Fallout4.exe+32A14A - E9 AC000000           - 
+//Fallout4.exe+32A14A - 0F85 AB000000         - jne Fallout4.exe+32A1FB
+
 
 // Allows achievements with mods and prevents game adding [MODS] in save file name
 static UInt8 ACHIEVEMENTS_NEWCODE[3] = { 0x30, 0xC0, 0xC3 }; // xor al, al; ret
@@ -109,9 +113,9 @@ static UInt64 OBJECTSNAP_NEWCODE = 0x9090909090F6570F; // xorps xmm6, xmm6; nop 
 
 // Workshop size
 static SInt32 WSSIZE_REL32 = 0;
-static UInt8 WORKSHOPSIZE_DRAWS_OLDCODE[6];
+static UInt8 WS_DRAWS_OLDCODE[6];
 static UInt8 WORKSHOPSIZE_DRAWS_NEWCODE[6] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
-static UInt8 WORKSHOPSIZE_TRIANGLES_OLDCODE[6];
+static UInt8 WS_TRIANGLES_OLDCODE[6];
 static UInt8 WORKSHOPSIZE_TRIANGLES_NEWCODE[6] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
 
 // zoom and rotate
@@ -137,6 +141,24 @@ extern "C" {
 namespace pir {
 
 	const char* logprefix = {"pir"};
+
+	static const std::string& GetPluginINIPath()
+	{
+		PIR_LOG_PREP
+		if (plugininifile.empty())
+		{
+			std::string	runtimePath = GetRuntimeDirectory();
+			if (!runtimePath.empty())
+			{
+				plugininifile = runtimePath + "Data\\F4SE\\Plugins\\PlaceInRed.ini";
+
+				pirlog.FormattedMessage("[%s::%s] %s", logprefix, thisfunc, plugininifile.c_str());
+
+			}
+		}
+
+		return plugininifile;
+	}
 
 	// Simple function to read memory (credit reg2k).
 	static bool ReadMemory(uintptr_t addr, void* data, size_t len) {
@@ -450,8 +472,8 @@ namespace pir {
 	{
 		PIR_LOG_PREP
 		if (WSSIZE && WORKSHOPSIZE_ENABLED) {
-			SafeWriteBuf((uintptr_t)WSSIZE, WORKSHOPSIZE_DRAWS_OLDCODE, sizeof(WORKSHOPSIZE_DRAWS_OLDCODE));
-			SafeWriteBuf((uintptr_t)WSSIZE + 0x0A, WORKSHOPSIZE_TRIANGLES_OLDCODE, sizeof(WORKSHOPSIZE_TRIANGLES_OLDCODE));
+			SafeWriteBuf((uintptr_t)WSSIZE, WS_DRAWS_OLDCODE, sizeof(WS_DRAWS_OLDCODE));
+			SafeWriteBuf((uintptr_t)WSSIZE + 0x0A, WS_TRIANGLES_OLDCODE, sizeof(WS_TRIANGLES_OLDCODE));
 			WORKSHOPSIZE_ENABLED = false;
 			pir::ConsolePrint("Unlimited workshop size disabled");
 			return true;
@@ -549,7 +571,7 @@ namespace pir {
 			SafeWriteBuf((uintptr_t)CHANGE_I, CHANGE_I_OLDCODE, sizeof(CHANGE_I_OLDCODE));
 			SafeWrite8((uintptr_t)RED + 0xC, 0x01);
 			SafeWriteBuf((uintptr_t)YELLOW, YELLOW_OLDCODE, sizeof(YELLOW_OLDCODE));
-			SafeWriteBuf((uintptr_t)WSTIMER2, WSTIMER2_OLDCODE, sizeof(WSTIMER2_OLDCODE));
+			SafeWriteBuf((uintptr_t)WSTIMER, WSTIMER_OLDCODE, sizeof(WSTIMER_OLDCODE));
 			PLACEINRED_ENABLED = false;
 			pir::ConsolePrint("Place In Red disabled.");
 			return true;
@@ -568,7 +590,7 @@ namespace pir {
 			SafeWriteBuf((uintptr_t)CHANGE_I, CHANGE_I_NEWCODE, sizeof(CHANGE_I_NEWCODE));
 			SafeWrite8((uintptr_t)RED + 0xC, 0x00);
 			SafeWriteBuf((uintptr_t)YELLOW, YELLOW_NEWCODE, sizeof(YELLOW_NEWCODE));
-			SafeWriteBuf((uintptr_t)WSTIMER2, WSTIMER2_NEWCODE, sizeof(WSTIMER2_NEWCODE));
+			SafeWriteBuf((uintptr_t)WSTIMER, WSTIMER_NEWCODE, sizeof(WSTIMER_NEWCODE));
 			PLACEINRED_ENABLED = true;
 			pir::ConsolePrint("Place In Red enabled.");
 			return true;
@@ -725,7 +747,7 @@ namespace pir {
 	{
 		if (ConsoleArgFinder && FirstConsoleFinder && FirstObScriptFinder && SetScaleFinder && GetScaleFinder && CurrentRefFinder
 			&& WorkshopModeFinder && GConsoleFinder && GDataHandlerFinder && CHANGE_A && CHANGE_B && CHANGE_C && CHANGE_D && CHANGE_E && CHANGE_F && CHANGE_G && CHANGE_H && CHANGE_I
-			&& YELLOW && RED && WSTIMER2 && GROUNDSNAP && OBJECTSNAP && OUTLINES && WSSIZE && ZOOM && ROTATE)
+			&& YELLOW && RED && WSTIMER && GROUNDSNAP && OBJECTSNAP && OUTLINES && WSSIZE && ZOOM && ROTATE)
 		{
 			return true;
 		}
@@ -762,7 +784,7 @@ namespace pir {
 		pirlog.FormattedMessage("CHANGE_I             : %p", CHANGE_I);
 		pirlog.FormattedMessage("RED                  : %p", RED);
 		pirlog.FormattedMessage("YELLOW               : %p", YELLOW);
-		pirlog.FormattedMessage("WSTIMER2             : %p | original bytes: %02X%02X%02X%02X%02X%02X%02X%02X", WSTIMER2, WSTIMER2_OLDCODE[0], WSTIMER2_OLDCODE[1], WSTIMER2_OLDCODE[2], WSTIMER2_OLDCODE[3], WSTIMER2_OLDCODE[4], WSTIMER2_OLDCODE[5], WSTIMER2_OLDCODE[6], WSTIMER2_OLDCODE[7]);
+		pirlog.FormattedMessage("WSTIMER              : %p", WSTIMER);
 		pirlog.FormattedMessage("GROUNDSNAP           : %p", GROUNDSNAP);
 		pirlog.FormattedMessage("OBJECTSNAP           : %p | original bytes: %02X%02X%02X%02X%02X%02X%02X%02X", OBJECTSNAP, OBJECTSNAP_OLDCODE[0], OBJECTSNAP_OLDCODE[1], OBJECTSNAP_OLDCODE[2], OBJECTSNAP_OLDCODE[3], OBJECTSNAP_OLDCODE[4], OBJECTSNAP_OLDCODE[5], OBJECTSNAP_OLDCODE[6], OBJECTSNAP_OLDCODE[7]);
 		pirlog.FormattedMessage("OUTLINES             : %p", OUTLINES);
@@ -771,8 +793,8 @@ namespace pir {
 		pirlog.FormattedMessage("ROTATE               : %p", ROTATE);
 		pirlog.FormattedMessage("ROTATE_FLOAT         : %p", uintptr_t(ROTATE) + (static_cast<uintptr_t>(ROTATE_REL32) + 8));
 		pirlog.FormattedMessage("ACHIEVEMENTS         : %p", ACHIEVEMENTS);
-		pirlog.FormattedMessage("WS_DRAWS_OLDCODE     : %p | original bytes: %02X%02X%02X%02X%02X%02X", WSSIZE, WORKSHOPSIZE_DRAWS_OLDCODE[0], WORKSHOPSIZE_DRAWS_OLDCODE[1], WORKSHOPSIZE_DRAWS_OLDCODE[2], WORKSHOPSIZE_DRAWS_OLDCODE[3], WORKSHOPSIZE_DRAWS_OLDCODE[4], WORKSHOPSIZE_DRAWS_OLDCODE[5]);
-		pirlog.FormattedMessage("WS_TRIANGLES_OLDCODE : %p | original bytes: %02X%02X%02X%02X%02X%02X", WSSIZE + 0x0A, WORKSHOPSIZE_TRIANGLES_OLDCODE[0], WORKSHOPSIZE_TRIANGLES_OLDCODE[1], WORKSHOPSIZE_TRIANGLES_OLDCODE[2], WORKSHOPSIZE_TRIANGLES_OLDCODE[3], WORKSHOPSIZE_TRIANGLES_OLDCODE[4], WORKSHOPSIZE_TRIANGLES_OLDCODE[5]);
+		pirlog.FormattedMessage("WS_DRAWS_OLDCODE     : %p | original bytes: %02X%02X%02X%02X%02X%02X", WSSIZE, WS_DRAWS_OLDCODE[0], WS_DRAWS_OLDCODE[1], WS_DRAWS_OLDCODE[2], WS_DRAWS_OLDCODE[3], WS_DRAWS_OLDCODE[4], WS_DRAWS_OLDCODE[5]);
+		pirlog.FormattedMessage("WS_TRIANGLES_OLDCODE : %p | original bytes: %02X%02X%02X%02X%02X%02X", WSSIZE + 0x0A, WS_TRIANGLES_OLDCODE[0], WS_TRIANGLES_OLDCODE[1], WS_TRIANGLES_OLDCODE[2], WS_TRIANGLES_OLDCODE[3], WS_TRIANGLES_OLDCODE[4], WS_TRIANGLES_OLDCODE[5]);
 		pirlog.FormattedMessage("WSSIZE               : %p", uintptr_t(WSSIZE) + (static_cast<uintptr_t>(WSSIZE_REL32) + 6));
 	}
 
@@ -800,7 +822,7 @@ namespace pir {
 		CHANGE_I = Utility::pattern("74 35 48 8B B5 ? ? ? ? 48 8B CE E8 ? ? ? ? 84 C0 75").count(1).get(0).get<uintptr_t>(); // ignore water restrictions
 		YELLOW = Utility::pattern("8B 58 14 48 8D 4C 24 30 8B D3 45 33 C0 E8").count(1).get(0).get<uintptr_t>(); // allow moving yellow objects
 		RED = Utility::pattern("89 05 ? ? ? ? C6 05 ? ? ? ? 01 48 83 C4 68 C3").count(1).get(0).get<uintptr_t>(); //keep objects green
-		WSTIMER2 = Utility::pattern("F3 0F 11 05 ? ? ? ? 77 65 48 8B 0D ? ? ? ? 41 B1 01 45 0F B6 C1 33 D2 E8").count(1).get(0).get<uintptr_t>(); // New ws timer check is buried in here
+		WSTIMER = Utility::pattern("0F 85 AB 00 00 00 F3 0F 10 05 ? ? ? ? 41 0F 2E C3 75 66 F3 0F 10 05 ? ? ? ? F3 0F 11 05 ? ? ? ? C6").count(1).get(0).get<uintptr_t>(); // New ws timer check is buried in here
 		OBJECTSNAP = Utility::pattern("F3 0F 10 35 ? ? ? ? 0F 28 C6 48 ? ? ? ? ? ? 33 C0").count(1).get(0).get<uintptr_t>();
 		GROUNDSNAP = Utility::pattern("0F 86 ? ? ? ? 41 8B 4E 34 49 B8").count(1).get(0).get<uintptr_t>();
 		WSSIZE = Utility::pattern("01 05 ? ? ? ? 8B 44 24 58 01 05 ? ? ? ? 85 D2 0F 84").count(1).get(0).get<uintptr_t>(); // where the game adds to the ws size
@@ -817,13 +839,12 @@ namespace pir {
 		if (CHANGE_D) { ReadMemory((uintptr_t(CHANGE_D)), &CHANGE_D_OLDCODE, 0x07); }
 		if (CHANGE_F) { ReadMemory((uintptr_t(CHANGE_F)), &CHANGE_F_OLDCODE, 0x06); }
 		if (OBJECTSNAP) { ReadMemory((uintptr_t(OBJECTSNAP)), &OBJECTSNAP_OLDCODE, 0x08); }
-		if (WSTIMER2) { ReadMemory(uintptr_t(WSTIMER2), &WSTIMER2_OLDCODE, 0x08); }
 		if (ZOOM) { ReadMemory((uintptr_t(ZOOM) + 0x04), &ZOOM_REL32, sizeof(SInt32)); }
 		if (ROTATE) { ReadMemory((uintptr_t(ROTATE) + 0x04), &ROTATE_REL32, sizeof(SInt32)); }
 
 		if (WSSIZE) {
-			ReadMemory((uintptr_t(WSSIZE)), &WORKSHOPSIZE_DRAWS_OLDCODE, 0x06);
-			ReadMemory((uintptr_t(WSSIZE) + 0x0A), &WORKSHOPSIZE_TRIANGLES_OLDCODE, 0x06);
+			ReadMemory((uintptr_t(WSSIZE)), &WS_DRAWS_OLDCODE, 0x06);
+			ReadMemory((uintptr_t(WSSIZE) + 0x0A), &WS_TRIANGLES_OLDCODE, 0x06);
 			ReadMemory((uintptr_t(WSSIZE) + 0x02), &WSSIZE_REL32, sizeof(SInt32));
 		}
 
@@ -900,6 +921,9 @@ __declspec(dllexport) bool F4SEPlugin_Load(const F4SEInterface* f4seinterface)
 	// start log
 	pirlog.OpenRelative(CSIDL_MYDOCUMENTS, pluginLogFile);
 	pirlog.FormattedMessage("[%s] Plugin loaded!", thisfunc);
+
+	//determine where the ini file should be
+	pir::GetPluginINIPath();
 
 	// get a plugin handle
 	pirPluginHandle = f4seinterface->GetPluginHandle();

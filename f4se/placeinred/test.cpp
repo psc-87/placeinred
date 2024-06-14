@@ -1023,19 +1023,19 @@ int GetObjectReferenceIndexById(VMArray<TESObjectREFR*> objs, const UInt64 id)
 const std::string& GetPatternFilePath(const UInt32 slot)
 {
 	//
-	static std::string s_configPath;
+	static std::string plugininifile;
 
 	std::string runtimePath = GetRuntimeDirectory();
 	if (!runtimePath.empty())
 	{
-		s_configPath = runtimePath;
-		s_configPath += "Data\\F4SE\\plugins\\clipboard\\";
-		s_configPath += std::to_string(slot);
-		s_configPath += "\\pattern.ini";
+		plugininifile = runtimePath;
+		plugininifile += "Data\\F4SE\\plugins\\clipboard\\";
+		plugininifile += std::to_string(slot);
+		plugininifile += "\\pattern.ini";
 	}
 
 	//
-	return s_configPath;
+	return plugininifile;
 }
 
 //Get the path of the blueprint in the given slot.
@@ -1043,16 +1043,16 @@ const std::string& GetPatternFilePath(const UInt32 slot)
 const std::string GetBlueprintFilePath(const UInt32 slot)
 {
 	//
-	static std::string s_configPath;
+	static std::string plugininifile;
 
 	std::string runtimePath = GetRuntimeDirectory();
 	if (!runtimePath.empty())
 	{
-		s_configPath = runtimePath;
-		s_configPath += "Data\\F4SE\\plugins\\TransferSettlements\blueprints\\";
-		s_configPath += std::to_string(slot);
+		plugininifile = runtimePath;
+		plugininifile += "Data\\F4SE\\plugins\\TransferSettlements\blueprints\\";
+		plugininifile += std::to_string(slot);
 		WIN32_FIND_DATAA FindFileData;
-		HANDLE h = FindFirstFileA((s_configPath + "\\*.json").c_str(), &FindFileData);
+		HANDLE h = FindFirstFileA((plugininifile + "\\*.json").c_str(), &FindFileData);
 		if (h == INVALID_HANDLE_VALUE)
 		{
 			AppendToLog("FindFirstFile.  Err=" + GetLastError());
@@ -1062,11 +1062,11 @@ const std::string GetBlueprintFilePath(const UInt32 slot)
 
 		AppendToLog("Found Blueprint: " + std::string(FindFileData.cFileName));
 		
-		return s_configPath + "\\" + FindFileData.cFileName;
+		return plugininifile + "\\" + FindFileData.cFileName;
 	}
 
 	logFunctionEnd(2);
-	return s_configPath;
+	return plugininifile;
 }
 
 // Empties the clipboard pattern in the given slot.
