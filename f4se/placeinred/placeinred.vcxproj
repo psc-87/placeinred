@@ -72,13 +72,11 @@
       <FavorSizeOrSpeed Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Speed</FavorSizeOrSpeed>
     </ClCompile>
     <ClCompile Include="pattern.cpp" />
-    <ClCompile Include="papyrus.cpp" />
     <Text Include="test.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="f4se.h" />
     <ClInclude Include="main.h" />
-    <ClInclude Include="papyrus.h" />
     <ClInclude Include="pattern.h" />
   </ItemGroup>
   <ItemGroup>

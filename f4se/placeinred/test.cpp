@@ -3196,7 +3196,7 @@ void SendWorkshopEventToSelectedObjectsLatent(UInt32 stackId, StaticFunctionTag*
 }
 
 //Call Enable on all objects in the given array.
-void EnableObjectsLatent(UInt32 stackId, StaticFunctionTag* base, VMArray<TESObjectREFR*> objs)
+void pEnableLatent(UInt32 stackId, StaticFunctionTag* base, VMArray<TESObjectREFR*> objs)
 {
 	//
 	TESObjectREFR* obj;
@@ -3213,7 +3213,7 @@ void EnableObjectsLatent(UInt32 stackId, StaticFunctionTag* base, VMArray<TESObj
 }
 
 //Call Disable on all objects in the given array.
-void DisableObjectsLatent(UInt32 stackId, StaticFunctionTag* base, VMArray<TESObjectREFR*> objs)
+void pDisableLatent(UInt32 stackId, StaticFunctionTag* base, VMArray<TESObjectREFR*> objs)
 {
 	//
 	TESObjectREFR* obj;
@@ -3578,8 +3578,8 @@ VMArray<TESObjectREFR*> PastePatternObjectsLatent(UInt32 stackId, StaticFunction
 DECLARE_DELAY_FUNCTOR(CreateSelectionBoxFunctor, 5, CreateSelectionBoxLatent, StaticFunctionTag, VMArray<TESObjectREFR*>, TESObjectREFR*, TESForm*, UInt32, UInt32, UInt32);
 DECLARE_DELAY_FUNCTOR(ScrapSelectionFunctor, 1, ScrapSelectionLatent, StaticFunctionTag, void, TESObjectREFR*);
 DECLARE_DELAY_FUNCTOR(SendWorkshopEventToSelectedObjectsFunctor, 2, SendWorkshopEventToSelectedObjectsLatent, StaticFunctionTag, void, TESObjectREFR*, BSFixedString);
-DECLARE_DELAY_FUNCTOR(DisableObjectsFunctor, 1, DisableObjectsLatent, StaticFunctionTag, void, VMArray<TESObjectREFR*>);
-DECLARE_DELAY_FUNCTOR(EnableObjectsFunctor, 1, EnableObjectsLatent, StaticFunctionTag, void, VMArray<TESObjectREFR*>);
+DECLARE_DELAY_FUNCTOR(DisableObjectsFunctor, 1, pDisableLatent, StaticFunctionTag, void, VMArray<TESObjectREFR*>);
+DECLARE_DELAY_FUNCTOR(EnableObjectsFunctor, 1, pEnableLatent, StaticFunctionTag, void, VMArray<TESObjectREFR*>);
 DECLARE_DELAY_FUNCTOR(ScrapObjectsFunctor, 1, ScrapObjectsLatent, StaticFunctionTag, void, VMArray<TESObjectREFR*>);
 DECLARE_DELAY_FUNCTOR(ScaleSelectionFunctor, 3, ScaleSelectionLatent, StaticFunctionTag, void, TESObjectREFR*, float, bool);
 DECLARE_DELAY_FUNCTOR(TransmitPowerInSelectionFunctor, 1, TransmitPowerInSelectionLatent, StaticFunctionTag, void, TESObjectREFR*);
@@ -3633,7 +3633,7 @@ bool DisableObjects(VirtualMachine* vm, UInt32 stackId, StaticFunctionTag* base,
 	//
 	if (g_object)
 	{
-		g_object->GetDelayFunctorManager().Enqueue(new DisableObjectsFunctor(DisableObjectsLatent, vm, stackId, base, objs));
+		g_object->GetDelayFunctorManager().Enqueue(new DisableObjectsFunctor(pDisableLatent, vm, stackId, base, objs));
 		//
 		return true;
 	}
@@ -3647,7 +3647,7 @@ bool EnableObjects(VirtualMachine* vm, UInt32 stackId, StaticFunctionTag* base, 
 	//
 	if (g_object)
 	{
-		g_object->GetDelayFunctorManager().Enqueue(new EnableObjectsFunctor(EnableObjectsLatent, vm, stackId, base, objs));
+		g_object->GetDelayFunctorManager().Enqueue(new EnableObjectsFunctor(pEnableLatent, vm, stackId, base, objs));
 		//
 		return true;
 	}

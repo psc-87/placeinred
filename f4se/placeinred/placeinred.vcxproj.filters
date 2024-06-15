@@ -3,13 +3,11 @@
   <ItemGroup>
     <ClCompile Include="main.cpp" />
     <ClCompile Include="pattern.cpp" />
-    <ClCompile Include="papyrus.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pattern.h" />
     <ClInclude Include="main.h" />
     <ClInclude Include="f4se.h" />
-    <ClInclude Include="papyrus.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="exports.def" />

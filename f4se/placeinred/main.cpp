@@ -39,8 +39,18 @@ static uintptr_t* GConsoleFinder = nullptr; //pattern to find g_console
 static SInt32 GConsoleRel32 = 0; // rel32 set later on
 static uintptr_t GConsoleStatic; // g_console
 
+// workshop mode finder
+static uintptr_t* WorkshopModeFinder = nullptr;
+static SInt32 WorkshopModeFinderRel32 = 0;
+static uintptr_t WorkshopModeBoolAddress;
+
+// g_gamedata via pattern
+static uintptr_t* GDataHandlerFinder = nullptr;
+static SInt32 GDataHandlerRel32 = 0;
+static uintptr_t GDataHandlerStatic;
+
 // Currently grabbed or highlighted workshop reference
-static uintptr_t* CurrentRefFinder = nullptr; // pattern to help us find it
+static uintptr_t* CurrentWSRefFinder = nullptr; // pattern to help us find it
 static uintptr_t CurrentRefBase; // base address
 static SInt32 CurrentRefBaseRel32 = 0; // rel32 of base address
 
@@ -51,17 +61,6 @@ static UInt64 collision_offsets[] = { 0x0, 0x0, 0x10, 0x100 }; //bhkNiCollisionO
 static size_t collision_count = sizeof(collision_offsets) / sizeof(collision_offsets[0]);
 static size_t ref_count = sizeof(ref_offsets) / sizeof(ref_offsets[0]);
 static size_t bsfadenode_count = sizeof(bsfadenode_offsets) / sizeof(bsfadenode_offsets[0]);
-
-// workshop mode finder
-static uintptr_t* WorkshopModeFinder = nullptr;
-static SInt32 WorkshopModeFinderRel32 = 0;
-static uintptr_t WorkshopModeBoolAddress;
-
-//g_gamedata
-//auto lightMods = (*g_dataHandler)->modList.lightMods;
-static uintptr_t* GDataHandlerFinder = nullptr;
-static SInt32 GDataHandlerRel32 = 0;
-static uintptr_t GDataHandlerStatic; // g_dataHandler RelocPtr <DataHandler*> g_dataHandler(0x02E64E68);
 
 // Pointers to memory patterns
 static uintptr_t* CHANGE_A = nullptr;
@@ -85,38 +84,34 @@ static uintptr_t* ZOOM = nullptr;
 static uintptr_t* ROTATE = nullptr;
 
 // For proper toggling 
-static UInt8 CHANGE_C_OLDCODE[7];
-static UInt8 CHANGE_C_NEWCODE[7] = { 0x31, 0xC0, 0x90, 0x90, 0x90, 0x90, 0x90 }; //xor al,al;nop x5
-static UInt8 CHANGE_D_OLDCODE[7];
-static UInt8 CHANGE_D_NEWCODE[7] = { 0x31, 0xC0, 0xB0, 0x01, 0x90, 0x90, 0x90 }; //xor al,al;mov al,01;nop x3
-static UInt8 CHANGE_F_OLDCODE[2] = { 0x88, 0x05 };
-static UInt8 CHANGE_F_NEWCODE[2] = { 0xEB, 0x04 };
-static UInt8 CHANGE_I_OLDCODE[2] = { 0x74, 0x35 };
-static UInt8 CHANGE_I_NEWCODE[2] = { 0xEB, 0x30 };
-static UInt8 YELLOW_NEWCODE[3] = { 0x90, 0x90, 0x90 }; //nop x3
-static UInt8 YELLOW_OLDCODE[3] = { 0x8B, 0x58, 0x14 };
-static UInt8 WSTIMER_OLDCODE[6] = { 0x0F, 0x85, 0xAB, 0x00, 0x00, 0x00 }; //jne
-static UInt8 WSTIMER_NEWCODE[6] = { 0xE9, 0xAC, 0x00, 0x00, 0x00, 0x90 }; //jmp instead
-
-// new ws timer
-// Fallout4.exe+32A14A - E9 AC000000           - 
-//Fallout4.exe+32A14A - 0F85 AB000000         - jne Fallout4.exe+32A1FB
+static UInt8 CHANGE_C_OLD[7];
+static UInt8 CHANGE_C_NEW[7] = { 0x31, 0xC0, 0x90, 0x90, 0x90, 0x90, 0x90 }; //xor al,al;nop x5
+static UInt8 CHANGE_D_OLD[7];
+static UInt8 CHANGE_D_NEW[7] = { 0x31, 0xC0, 0xB0, 0x01, 0x90, 0x90, 0x90 }; //xor al,al;mov al,01;nop x3
+static UInt8 CHANGE_F_OLD[2] = { 0x88, 0x05 };
+static UInt8 CHANGE_F_NEW[2] = { 0xEB, 0x04 };
+static UInt8 CHANGE_I_OLD[2] = { 0x74, 0x35 };
+static UInt8 CHANGE_I_NEW[2] = { 0xEB, 0x30 };
+static UInt8 YELLOW_NEW[3] = { 0x90, 0x90, 0x90 }; //nop x3
+static UInt8 YELLOW_OLD[3] = { 0x8B, 0x58, 0x14 };
+static UInt8 WSTIMER_OLD[6] = { 0x0F, 0x85, 0xAB, 0x00, 0x00, 0x00 }; //jne
+static UInt8 WSTIMER_NEW[6] = { 0xE9, 0xAC, 0x00, 0x00, 0x00, 0x90 }; //jmp instead
 
 
 // Allows achievements with mods and prevents game adding [MODS] in save file name
-static UInt8 ACHIEVEMENTS_NEWCODE[3] = { 0x30, 0xC0, 0xC3 }; // xor al, al; ret
-static UInt8 ACHIEVEMENTS_OLDCODE[4] = { 0x48, 0x83, 0xEC, 0x28 }; // sub rsp,28
+static UInt8 ACHIEVEMENTS_NEW[3] = { 0x30, 0xC0, 0xC3 }; // xor al, al; ret
+static UInt8 ACHIEVEMENTS_OLD[4] = { 0x48, 0x83, 0xEC, 0x28 }; // sub rsp,28
 
 // Object snap
-static UInt8 OBJECTSNAP_OLDCODE[8];
-static UInt64 OBJECTSNAP_NEWCODE = 0x9090909090F6570F; // xorps xmm6, xmm6; nop x5
+static UInt8 OBJECTSNAP_OLD[8];
+static UInt64 OBJECTSNAP_NEW = 0x9090909090F6570F; // xorps xmm6, xmm6; nop x5
 
 // Workshop size
 static SInt32 WSSIZE_REL32 = 0;
-static UInt8 WS_DRAWS_OLDCODE[6];
-static UInt8 WORKSHOPSIZE_DRAWS_NEWCODE[6] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
-static UInt8 WS_TRIANGLES_OLDCODE[6];
-static UInt8 WORKSHOPSIZE_TRIANGLES_NEWCODE[6] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
+static UInt8 WS_DRAWS_OLD[6];
+static UInt8 WS_DRAWS_NEW[6] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
+static UInt8 WS_TRIANGLES_OLD[6];
+static UInt8 WS_TRIANGLES_NEW[6] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
 
 // zoom and rotate
 static SInt32 ZOOM_REL32 = 0;
@@ -141,6 +136,25 @@ extern "C" {
 namespace pir {
 
 	const char* logprefix = {"pir"};
+
+	char* stripNewlinesandpipes(const char* str) {
+		size_t len = strlen(str);
+		char* newStr = new char[len + 1]; // Allocate memory for the new string
+
+		const char* src = str;
+		char* dst = newStr;
+
+		while (*src) {
+			if ((*src != '\n') && (*src != 0x7C) && (*src != '\r'))
+			{
+				*dst++ = *src;
+			}
+			src++;
+		}
+		*dst = '\0'; // Null-terminate the result string
+
+		return newStr;
+	}
 
 	static const std::string& GetPluginINIPath()
 	{
@@ -177,7 +191,7 @@ namespace pir {
 	{
 		// pattern: pattern match pointer
 		// rel32start:to reach start of rel32 from pattern
-		// rel32end: to reach end of rel32 from pattern
+		// rel32end: to reach end of rel32 instruction
 		// specifymodify: bytes to shift the result by, default 0 no change
 		if (pattern) {
 			SInt32 relish32 = 0;
@@ -236,7 +250,7 @@ namespace pir {
 	static TESObjectREFR* GetCurrentWSRef(bool refonly=1)
 	{
 		PIR_LOG_PREP
-		if (CurrentRefFinder && CurrentRefBase && pir::InWorkshopMode()) {
+		if (CurrentWSRefFinder && CurrentRefBase && pir::InWorkshopMode()) {
 
 			uintptr_t* refptr = GimmeMultiPointer(CurrentRefBase, ref_offsets, ref_count);
 			TESObjectREFR* ref = (TESObjectREFR*)(refptr);
@@ -264,20 +278,17 @@ namespace pir {
 	static void DumpCellRefs()
 	{
 		PIR_LOG_PREP
-		if (CurrentRefFinder && CurrentRefBase) {
-			TESObjectREFR* ref = GetCurrentWSRef();
-			if (ref) {
-				TESObjectCELL* currentcell = ref->parentCell;
-				TESObjectREFR* tempref;
-				for (int i = 0; i < currentcell->objectList.count; i++)
-				{
-					currentcell->objectList.GetNthItem(i, tempref);
-					UInt32 fid = tempref->formID;
-					pirlog.FormattedMessage("%04X %f %f %f %f %f %f", fid, tempref->pos.x, tempref->pos.y, tempref->pos.z, tempref->rot.x, tempref->rot.y, tempref->rot.z);
-				}
+		TESObjectREFR* ref = GetCurrentWSRef();
+		if (ref) {
+			TESObjectCELL* currentcell = ref->parentCell;
+			TESObjectREFR* tempref;
+			for (int i = 0; i < currentcell->objectList.count; i++)
+			{
+				currentcell->objectList.GetNthItem(i, tempref);
+				UInt32 fid = tempref->formID;
+				pirlog.FormattedMessage("%04X %f %f %f %f %f %f", fid, tempref->pos.x, tempref->pos.y, tempref->pos.z, tempref->rot.x, tempref->rot.y, tempref->rot.z);
 			}
 		}
-
 	}
 
 	// To switch with strings
@@ -360,15 +371,16 @@ namespace pir {
 			TESObjectCELL* parentCell = ref->parentCell;
 			TESWorldSpace* worldspace = CALL_MEMBER_FN(ref, GetWorldspace)();
 
+			// new position
 			NiPoint3 newPos;
 			newPos.x = ref->pos.x + modx;
 			newPos.y = ref->pos.y + mody;
 			newPos.z = ref->pos.z + modz;
-
+			// new rotation
 			NiPoint3 newRot;
-			newRot.x = ref->rot.x + 0;
-			newRot.y = ref->rot.y + 0;
-			newRot.z = ref->rot.z + 0;
+			newRot.x = ref->rot.x;
+			newRot.y = ref->rot.y;
+			newRot.z = ref->rot.z;
 			
 			for (int i=0; i<=repeat; i++)
 			{
@@ -387,7 +399,7 @@ namespace pir {
 			float oldscale = GetScale(ref);
 			float newScale = oldscale * (fMultiplyAmount);
 			if (newScale > 9.9999f) { newScale = 9.9999f; }
-			if (newScale < 0.0001f) { newScale = 0.0001f; } //kFloatEpsilon
+			if (newScale < 0.0001f) { newScale = 0.0001f; }
 			SetScale(ref, newScale);
 			pir::MoveRefToSelf(0, 0, 0, 1); //repeat once to fix jitter
 			return true;
@@ -404,11 +416,17 @@ namespace pir {
 			return false;
 		}
 
+		pirlog.FormattedMessage("---------------------------------------------------------");
+		pirlog.FormattedMessage("Type|opcode|rel32|[pointer]|short|long|params|needsparent|helptext");
+
 		for (ObScriptCommand* iter = FirstConsole; iter->opcode < (kObScript_NumConsoleCommands + kObScript_ConsoleOpBase); ++iter) {
 			if (iter) {
 				uintptr_t exeaddr = (uintptr_t) & (iter->execute);
 				uint64_t* funcptr = (uint64_t*)(exeaddr);
-				pirlog.FormattedMessage("Console|%08X|%p|%s|%s|%X|%X|%s", iter->opcode, *funcptr, iter->shortName, iter->longName, iter->numParams, iter->needsParent, iter->helpText);
+				uint64_t relly = *funcptr - RelocationManager::s_baseAddr;
+				const char* cleanhelp = stripNewlinesandpipes(iter->helpText);
+
+				pirlog.FormattedMessage("C|%06X|Fallout4.exe+0x%08X|%p|%s|%s|%X|%X|%s", iter->opcode, relly, *funcptr, iter->shortName, iter->longName, iter->numParams, iter->needsParent, cleanhelp);
 			}
 		}
 
@@ -416,7 +434,9 @@ namespace pir {
 			if (iter) {
 				uintptr_t exeaddr = (uintptr_t) & (iter->execute);
 				uint64_t* funcptr = (uint64_t*)(exeaddr);
-				pirlog.FormattedMessage("ObScript|%08X|%p|%s|%s|%X|%X|%s", iter->opcode, *funcptr, iter->shortName, iter->longName, iter->numParams, iter->needsParent, iter->helpText);
+				uint64_t relly = *funcptr - RelocationManager::s_baseAddr;
+				const char* cleanhelp = stripNewlinesandpipes(iter->helpText);
+				pirlog.FormattedMessage("O|%06X|Fallout4.exe+0x%08X|%p|%s|%s|%X|%X|%s", iter->opcode, relly, *funcptr, iter->shortName, iter->longName, iter->numParams, iter->needsParent, cleanhelp);
 			}
 		}
 
@@ -472,8 +492,8 @@ namespace pir {
 	{
 		PIR_LOG_PREP
 		if (WSSIZE && WORKSHOPSIZE_ENABLED) {
-			SafeWriteBuf((uintptr_t)WSSIZE, WS_DRAWS_OLDCODE, sizeof(WS_DRAWS_OLDCODE));
-			SafeWriteBuf((uintptr_t)WSSIZE + 0x0A, WS_TRIANGLES_OLDCODE, sizeof(WS_TRIANGLES_OLDCODE));
+			SafeWriteBuf((uintptr_t)WSSIZE, WS_DRAWS_OLD, sizeof(WS_DRAWS_OLD));
+			SafeWriteBuf((uintptr_t)WSSIZE + 0x0A, WS_TRIANGLES_OLD, sizeof(WS_TRIANGLES_OLD));
 			WORKSHOPSIZE_ENABLED = false;
 			pir::ConsolePrint("Unlimited workshop size disabled");
 			return true;
@@ -481,8 +501,8 @@ namespace pir {
 
 		if (WSSIZE && WORKSHOPSIZE_ENABLED == false) {
 
-			SafeWriteBuf((uintptr_t)WSSIZE, WORKSHOPSIZE_DRAWS_NEWCODE, sizeof(WORKSHOPSIZE_DRAWS_NEWCODE));
-			SafeWriteBuf((uintptr_t)WSSIZE + 0x0A, WORKSHOPSIZE_TRIANGLES_NEWCODE, sizeof(WORKSHOPSIZE_TRIANGLES_NEWCODE));
+			SafeWriteBuf((uintptr_t)WSSIZE, WS_DRAWS_NEW, sizeof(WS_DRAWS_NEW));
+			SafeWriteBuf((uintptr_t)WSSIZE + 0x0A, WS_TRIANGLES_NEW, sizeof(WS_TRIANGLES_NEW));
 
 			// set draws and triangles to zero
 			SafeWrite64(uintptr_t(WSSIZE) + (static_cast<uintptr_t>(WSSIZE_REL32) + 6), 0x0000000000000000);
@@ -519,13 +539,13 @@ namespace pir {
 	{
 		PIR_LOG_PREP
 		if (OBJECTSNAP && OBJECTSNAP_ENABLED) {
-			SafeWrite64((uintptr_t)OBJECTSNAP, OBJECTSNAP_NEWCODE);
+			SafeWrite64((uintptr_t)OBJECTSNAP, OBJECTSNAP_NEW);
 			OBJECTSNAP_ENABLED = false;
 			pir::ConsolePrint("Object snap disabled");
 			return true;
 		}
 		if (OBJECTSNAP && !OBJECTSNAP_ENABLED) {
-			SafeWriteBuf((uintptr_t)OBJECTSNAP, OBJECTSNAP_OLDCODE, sizeof(OBJECTSNAP_OLDCODE));
+			SafeWriteBuf((uintptr_t)OBJECTSNAP, OBJECTSNAP_OLD, sizeof(OBJECTSNAP_OLD));
 			OBJECTSNAP_ENABLED = true;
 			pir::ConsolePrint("Object snap enabled");
 			return true;
@@ -539,14 +559,14 @@ namespace pir {
 		PIR_LOG_PREP
 		// its on - toggle it off
 		if (ACHIEVEMENTS && ACHIEVEMENTS_ENABLED) {
-			SafeWriteBuf((uintptr_t)ACHIEVEMENTS, ACHIEVEMENTS_OLDCODE, sizeof(ACHIEVEMENTS_OLDCODE));
+			SafeWriteBuf((uintptr_t)ACHIEVEMENTS, ACHIEVEMENTS_OLD, sizeof(ACHIEVEMENTS_OLD));
 			ACHIEVEMENTS_ENABLED = false;
 			pir::ConsolePrint("Achievements with mods disabled (game default)");
 			return true;
 		}
 		// its off - toggle it on
 		if (ACHIEVEMENTS && !ACHIEVEMENTS_ENABLED) {
-			SafeWriteBuf((uintptr_t)ACHIEVEMENTS, ACHIEVEMENTS_NEWCODE, sizeof(ACHIEVEMENTS_NEWCODE));
+			SafeWriteBuf((uintptr_t)ACHIEVEMENTS, ACHIEVEMENTS_NEW, sizeof(ACHIEVEMENTS_NEW));
 			ACHIEVEMENTS_ENABLED = true;
 			pir::ConsolePrint("Achievements with mods enabled!");
 			return true;
@@ -562,16 +582,16 @@ namespace pir {
 			SafeWrite8((uintptr_t)CHANGE_A + 0x06, 0x01);
 			SafeWrite8((uintptr_t)CHANGE_A + 0x0C, 0x02);
 			SafeWrite8((uintptr_t)CHANGE_B + 0x01, 0x01);
-			SafeWriteBuf((uintptr_t)CHANGE_C, CHANGE_C_OLDCODE, sizeof(CHANGE_C_OLDCODE));
-			SafeWriteBuf((uintptr_t)CHANGE_D, CHANGE_D_OLDCODE, sizeof(CHANGE_D_OLDCODE));
+			SafeWriteBuf((uintptr_t)CHANGE_C, CHANGE_C_OLD, sizeof(CHANGE_C_OLD));
+			SafeWriteBuf((uintptr_t)CHANGE_D, CHANGE_D_OLD, sizeof(CHANGE_D_OLD));
 			SafeWrite8((uintptr_t)CHANGE_E + 0x00, 0x76);
-			SafeWriteBuf((uintptr_t)CHANGE_F, CHANGE_F_OLDCODE, sizeof(CHANGE_F_OLDCODE));
+			SafeWriteBuf((uintptr_t)CHANGE_F, CHANGE_F_OLD, sizeof(CHANGE_F_OLD));
 			SafeWrite8((uintptr_t)CHANGE_G + 0x01, 0x95);
 			SafeWrite8((uintptr_t)CHANGE_H + 0x00, 0x74);
-			SafeWriteBuf((uintptr_t)CHANGE_I, CHANGE_I_OLDCODE, sizeof(CHANGE_I_OLDCODE));
+			SafeWriteBuf((uintptr_t)CHANGE_I, CHANGE_I_OLD, sizeof(CHANGE_I_OLD));
 			SafeWrite8((uintptr_t)RED + 0xC, 0x01);
-			SafeWriteBuf((uintptr_t)YELLOW, YELLOW_OLDCODE, sizeof(YELLOW_OLDCODE));
-			SafeWriteBuf((uintptr_t)WSTIMER, WSTIMER_OLDCODE, sizeof(WSTIMER_OLDCODE));
+			SafeWriteBuf((uintptr_t)YELLOW, YELLOW_OLD, sizeof(YELLOW_OLD));
+			SafeWriteBuf((uintptr_t)WSTIMER, WSTIMER_OLD, sizeof(WSTIMER_OLD));
 			PLACEINRED_ENABLED = false;
 			pir::ConsolePrint("Place In Red disabled.");
 			return true;
@@ -581,16 +601,16 @@ namespace pir {
 			SafeWrite8((uintptr_t)CHANGE_A + 0x06, 0x00);
 			SafeWrite8((uintptr_t)CHANGE_A + 0x0C, 0x01);
 			SafeWrite8((uintptr_t)CHANGE_B + 0x01, 0x00);
-			SafeWriteBuf((uintptr_t)CHANGE_C, CHANGE_C_NEWCODE, sizeof(CHANGE_C_NEWCODE));
-			SafeWriteBuf((uintptr_t)CHANGE_D, CHANGE_D_NEWCODE, sizeof(CHANGE_D_NEWCODE));
+			SafeWriteBuf((uintptr_t)CHANGE_C, CHANGE_C_NEW, sizeof(CHANGE_C_NEW));
+			SafeWriteBuf((uintptr_t)CHANGE_D, CHANGE_D_NEW, sizeof(CHANGE_D_NEW));
 			SafeWrite8((uintptr_t)CHANGE_E + 0x00, 0xEB);
-			SafeWriteBuf((uintptr_t)CHANGE_F, CHANGE_F_NEWCODE, sizeof(CHANGE_F_NEWCODE));
+			SafeWriteBuf((uintptr_t)CHANGE_F, CHANGE_F_NEW, sizeof(CHANGE_F_NEW));
 			SafeWrite8((uintptr_t)CHANGE_G + 0x01, 0x98); // works but look at again later
 			SafeWrite8((uintptr_t)CHANGE_H + 0x00, 0xEB);   
-			SafeWriteBuf((uintptr_t)CHANGE_I, CHANGE_I_NEWCODE, sizeof(CHANGE_I_NEWCODE));
+			SafeWriteBuf((uintptr_t)CHANGE_I, CHANGE_I_NEW, sizeof(CHANGE_I_NEW));
 			SafeWrite8((uintptr_t)RED + 0xC, 0x00);
-			SafeWriteBuf((uintptr_t)YELLOW, YELLOW_NEWCODE, sizeof(YELLOW_NEWCODE));
-			SafeWriteBuf((uintptr_t)WSTIMER, WSTIMER_NEWCODE, sizeof(WSTIMER_NEWCODE));
+			SafeWriteBuf((uintptr_t)YELLOW, YELLOW_NEW, sizeof(YELLOW_NEW));
+			SafeWriteBuf((uintptr_t)WSTIMER, WSTIMER_NEW, sizeof(WSTIMER_NEW));
 			PLACEINRED_ENABLED = true;
 			pir::ConsolePrint("Place In Red enabled.");
 			return true;
@@ -603,18 +623,10 @@ namespace pir {
 	static void LogWSRef()
 	{
 		PIR_LOG_PREP
-		TESObjectREFR* ref = GetCurrentWSRef(0); // 0 to remove formtype restriction
+		TESObjectREFR* ref = GetCurrentWSRef(0);
 		if (ref) {
 			pirlog.FormattedMessage("-------------------------------------------------------------------------------------");
-
-			//TESObjectCELL*		cell =				ref->parentCell;
-			//TESWorldSpace*		worldspace =		ref->parentCell->worldSpace;
-			//bhkWorld*				havokworld =		CALL_MEMBER_FN(cell, GetHavokWorld)();
-			//const char*			edid =				ref->GetEditorID();
-			//const char*			fullname =			ref->GetFullName();
-
 			UInt8					formtype =			ref->GetFormType();
-
 			UInt32					formid =			ref->formID;
 			UInt32					refflags =			ref->flags;
 			UInt32					cellformid =		ref->parentCell->formID;
@@ -635,13 +647,8 @@ namespace pir {
 			pirlog.FormattedMessage("root->m_children: %02X", rootchildren);
 			pirlog.FormattedMessage("ref->formtype   : %01X (%d)", formtype, formtype);
 			pirlog.FormattedMessage("ref->formID     : %04X", formid);
-			//pirlog.FormattedMessage("ref->editorID : %s", edid);
-			//pirlog.FormattedMessage("ref->fullname : %s", fullname);
 			pirlog.FormattedMessage("ref->flags      : %04X", refflags);
-			
-			pirlog.FormattedMessage("Unknowns: %08X %08X %08X %08X %08X %08X %08X", ref->unk104, ref->unk108, ref->unk18, ref->unk1B, ref->unk60, ref->unk68, ref->unk70);
-			pirlog.FormattedMessage("Unknowns: %08X %08X %08X %08X %08X %08X %08X", ref->unk74, ref->unk78, ref->unk7C, ref->unk80, ref->unk88, ref->unk90, ref->unk98);
-			pirlog.FormattedMessage("Unknowns: %08X %08X %08X %08X %08X %08X %08X %08X", ref->unkA0, ref->unkA8, ref->unkB0, ref->unkCC, ref->unkDC, ref->unkE8, ref->unkF0, ref->unk08);
+		
 			pirlog.FormattedMessage("-------------------------------------------------------------------------------------");
 
 		}
@@ -659,43 +666,49 @@ namespace pir {
 			if (consoleresult && consolearg[0]) {
 				switch (ConsoleSwitch(consolearg)) {
 					// debug and tests
-					case pir::ConsoleSwitch("dumprefs"):        pir::DumpCellRefs();                 break;
-					case pir::ConsoleSwitch("dump"):            pir::DumpCmds();                     break;
-					case pir::ConsoleSwitch("logref"):          pir::LogWSRef();                     break;
-					case pir::ConsoleSwitch("moveself"):        pir::MoveRefToSelf(0,0,0,0);         break;
-					case pir::ConsoleSwitch("moveselftwice"):   pir::MoveRefToSelf(0,0,0,1);         break;
+					case pir::ConsoleSwitch("dumprefs"):       pir::DumpCellRefs();                 break;
+					case pir::ConsoleSwitch("dump"):           pir::DumpCmds();                     break;
+					case pir::ConsoleSwitch("logref"):         pir::LogWSRef();                     break;
+					case pir::ConsoleSwitch("moveself"):       pir::MoveRefToSelf(0,0,0,0);         break;
+					case pir::ConsoleSwitch("moveselftwice"):  pir::MoveRefToSelf(0,0,0,1);         break;
 
 					//toggles
-					case pir::ConsoleSwitch("1"):               pir::Toggle_PlaceInRed();            break;
-					case pir::ConsoleSwitch("toggle"):          pir::Toggle_PlaceInRed();            break;
-					case pir::ConsoleSwitch("2"):               pir::Toggle_ObjectSnap();            break;
-					case pir::ConsoleSwitch("osnap"):           pir::Toggle_ObjectSnap();            break;
-					case pir::ConsoleSwitch("3"):               pir::Toggle_GroundSnap();            break;
-					case pir::ConsoleSwitch("gsnap"):           pir::Toggle_GroundSnap();            break;
-					case pir::ConsoleSwitch("4"):               pir::Toggle_SlowZoomAndRotate();     break;
-					case pir::ConsoleSwitch("slow"):            pir::Toggle_SlowZoomAndRotate();     break;
-					case pir::ConsoleSwitch("5"):               pir::Toggle_WorkshopSize();          break;
-					case pir::ConsoleSwitch("workshopsize"):    pir::Toggle_WorkshopSize();          break;
-					case pir::ConsoleSwitch("6"):               pir::Toggle_Outlines();              break;
-					case pir::ConsoleSwitch("outlines"):        pir::Toggle_Outlines();              break;
-					case pir::ConsoleSwitch("7"):               pir::Toggle_Achievements();          break;
-					case pir::ConsoleSwitch("achievements"):    pir::Toggle_Achievements();          break;
-																								     
-					//scale up and fix jitter													     
-					case pir::ConsoleSwitch("scaleup1"):		pir::ModCurrentRefScale(1.0100f);   break;
-					case pir::ConsoleSwitch("scaleup5"):		pir::ModCurrentRefScale(1.0500f);   break;
-					case pir::ConsoleSwitch("scaleup10"):		pir::ModCurrentRefScale(1.1000f);   break;
-					case pir::ConsoleSwitch("scaleup25"):		pir::ModCurrentRefScale(1.2500f);   break;
-					case pir::ConsoleSwitch("scaleup50"):		pir::ModCurrentRefScale(1.5000f);   break;
-					case pir::ConsoleSwitch("scaleup100"):		pir::ModCurrentRefScale(2.0000f);   break;
-																								     
-					//scale down and fix jitter													     
-					case pir::ConsoleSwitch("scaledown1"):		pir::ModCurrentRefScale(0.9900f);   break;
-					case pir::ConsoleSwitch("scaledown5"):		pir::ModCurrentRefScale(0.9500f);   break;
-					case pir::ConsoleSwitch("scaledown10"):		pir::ModCurrentRefScale(0.9000f);   break;
-					case pir::ConsoleSwitch("scaledown25"):		pir::ModCurrentRefScale(0.7500f);   break;
-					case pir::ConsoleSwitch("scaledown50"):		pir::ModCurrentRefScale(0.5000f);   break;
-					case pir::ConsoleSwitch("scaledown75"):		pir::ModCurrentRefScale(0.2500f);   break;
+					case pir::ConsoleSwitch("1"):              pir::Toggle_PlaceInRed();            break;
+					case pir::ConsoleSwitch("toggle"):         pir::Toggle_PlaceInRed();            break;
+					case pir::ConsoleSwitch("2"):              pir::Toggle_ObjectSnap();            break;
+					case pir::ConsoleSwitch("osnap"):          pir::Toggle_ObjectSnap();            break;
+					case pir::ConsoleSwitch("3"):              pir::Toggle_GroundSnap();            break;
+					case pir::ConsoleSwitch("gsnap"):          pir::Toggle_GroundSnap();            break;
+					case pir::ConsoleSwitch("4"):              pir::Toggle_SlowZoomAndRotate();     break;
+					case pir::ConsoleSwitch("slow"):           pir::Toggle_SlowZoomAndRotate();     break;
+					case pir::ConsoleSwitch("5"):              pir::Toggle_WorkshopSize();          break;
+					case pir::ConsoleSwitch("workshopsize"):   pir::Toggle_WorkshopSize();          break;
+					case pir::ConsoleSwitch("6"):              pir::Toggle_Outlines();              break;
+					case pir::ConsoleSwitch("outlines"):       pir::Toggle_Outlines();              break;
+					case pir::ConsoleSwitch("7"):              pir::Toggle_Achievements();          break;
+					case pir::ConsoleSwitch("achievements"):   pir::Toggle_Achievements();          break;
+																	
+					//scale constants
+					case pir::ConsoleSwitch("scale1"):	       pir::SetCurrentRefScale(1.0000f);    break;
+					case pir::ConsoleSwitch("scale10"):	       pir::SetCurrentRefScale(10.000f);    break;
+
+					//scale up												     
+					case pir::ConsoleSwitch("scaleup1"):	   pir::ModCurrentRefScale(1.0100f);    break;
+					case pir::ConsoleSwitch("scaleup2"):	   pir::ModCurrentRefScale(1.0200f);    break;
+					case pir::ConsoleSwitch("scaleup5"):	   pir::ModCurrentRefScale(1.0500f);    break;
+					case pir::ConsoleSwitch("scaleup10"):	   pir::ModCurrentRefScale(1.1000f);    break;
+					case pir::ConsoleSwitch("scaleup25"):	   pir::ModCurrentRefScale(1.2500f);    break;
+					case pir::ConsoleSwitch("scaleup50"):	   pir::ModCurrentRefScale(1.5000f);    break;
+					case pir::ConsoleSwitch("scaleup100"):	   pir::ModCurrentRefScale(2.0000f);    break;
+															   								        
+					//scale down			   								        
+					case pir::ConsoleSwitch("scaledown1"):	   pir::ModCurrentRefScale(0.9900f);    break;
+					case pir::ConsoleSwitch("scaledown2"):	   pir::ModCurrentRefScale(0.9800f);    break;
+					case pir::ConsoleSwitch("scaledown5"):	   pir::ModCurrentRefScale(0.9500f);    break;
+					case pir::ConsoleSwitch("scaledown10"):	   pir::ModCurrentRefScale(0.9000f);    break;
+					case pir::ConsoleSwitch("scaledown25"):	   pir::ModCurrentRefScale(0.7500f);    break;
+					case pir::ConsoleSwitch("scaledown50"):	   pir::ModCurrentRefScale(0.5000f);    break;
+					case pir::ConsoleSwitch("scaledown75"):	   pir::ModCurrentRefScale(0.2500f);    break;
 
 					default: pir::ConsolePrint(pirunknowncommandmsg);  break;
 				}
@@ -745,7 +758,7 @@ namespace pir {
 	//did we find all the required memory patterns?
 	static bool FoundRequiredMemoryPatterns()
 	{
-		if (ConsoleArgFinder && FirstConsoleFinder && FirstObScriptFinder && SetScaleFinder && GetScaleFinder && CurrentRefFinder
+		if (ConsoleArgFinder && FirstConsoleFinder && FirstObScriptFinder && SetScaleFinder && GetScaleFinder && CurrentWSRefFinder
 			&& WorkshopModeFinder && GConsoleFinder && GDataHandlerFinder && CHANGE_A && CHANGE_B && CHANGE_C && CHANGE_D && CHANGE_E && CHANGE_F && CHANGE_G && CHANGE_H && CHANGE_I
 			&& YELLOW && RED && WSTIMER && GROUNDSNAP && OBJECTSNAP && OUTLINES && WSSIZE && ZOOM && ROTATE)
 		{
@@ -759,46 +772,47 @@ namespace pir {
 	//log all the memory patterns to the log file
 	static void LogMemoryPatterns()
 	{
-		pirlog.FormattedMessage("----------------------------------------------------------------");
-		pirlog.FormattedMessage("Base                 : %p", RelocationManager::s_baseAddr);
-		pirlog.FormattedMessage("ConsoleArgFinder     : %p | rel32: 0x%08X", ConsoleArgFinder, ConsoleArgRel32);
-		pirlog.FormattedMessage("FirstConsoleFinder   : %p | rel32: 0x%08X", FirstConsoleFinder, FirstConsoleRel32);
-		pirlog.FormattedMessage("FirstObScriptFinder  : %p | rel32: 0x%08X", FirstObScriptFinder, FirstObScriptRel32);
-		pirlog.FormattedMessage("GConsoleFinder       : %p | rel32: 0x%08X | %p", GConsoleFinder, GConsoleRel32, GConsoleStatic);
-		pirlog.FormattedMessage("GetScaleFinder       : %p | rel32: 0x%08X", GetScaleFinder, GetScaleRel32);
-		pirlog.FormattedMessage("SetScaleFinder       : %p | rel32: 0x%08X", SetScaleFinder, SetScaleRel32);
-		pirlog.FormattedMessage("CurrentRefFinder     : %p | rel32: 0x%08X | %p", CurrentRefFinder, CurrentRefBaseRel32, CurrentRefBase);
-		pirlog.FormattedMessage("ConsoleRefCallFinder : %p", ConsoleRefCallFinder);
-		pirlog.FormattedMessage("ConsoleRefFuncFinder : %p", ConsoleRefFuncFinder);
-		pirlog.FormattedMessage("ConsoleRefFuncAddress: %p | rel32: 0x%08X", ConsoleRefFuncAddress, static_cast<uintptr_t>(ConsoleRefFuncRel32));
-		pirlog.FormattedMessage("GDataHandlerFinder   : %p | rel32: 0x%08X | %p", GDataHandlerFinder, GDataHandlerRel32, GDataHandlerStatic);
-		pirlog.FormattedMessage("WorkshopModeFinder   : %p | rel32: 0x%08X | %p", WorkshopModeFinder, WorkshopModeFinderRel32, WorkshopModeBoolAddress);
-		pirlog.FormattedMessage("CHANGE_A             : %p", CHANGE_A);
-		pirlog.FormattedMessage("CHANGE_B             : %p", CHANGE_B);
-		pirlog.FormattedMessage("CHANGE_C             : %p | original bytes: %02X%02X%02X%02X%02X%02X%02X", CHANGE_C, CHANGE_C_OLDCODE[0], CHANGE_C_OLDCODE[1], CHANGE_C_OLDCODE[2], CHANGE_C_OLDCODE[3], CHANGE_C_OLDCODE[4], CHANGE_C_OLDCODE[5], CHANGE_C_OLDCODE[6]);
-		pirlog.FormattedMessage("CHANGE_D             : %p | original bytes: %02X%02X%02X%02X%02X%02X%02X", CHANGE_D, CHANGE_D_OLDCODE[0], CHANGE_D_OLDCODE[1], CHANGE_D_OLDCODE[2], CHANGE_D_OLDCODE[3], CHANGE_D_OLDCODE[4], CHANGE_D_OLDCODE[5], CHANGE_D_OLDCODE[6]);
-		pirlog.FormattedMessage("CHANGE_E             : %p", CHANGE_E);
-		pirlog.FormattedMessage("CHANGE_F             : %p", CHANGE_F);
-		pirlog.FormattedMessage("CHANGE_G             : %p", CHANGE_G);
-		pirlog.FormattedMessage("CHANGE_H             : %p", CHANGE_H);
-		pirlog.FormattedMessage("CHANGE_I             : %p", CHANGE_I);
-		pirlog.FormattedMessage("RED                  : %p", RED);
-		pirlog.FormattedMessage("YELLOW               : %p", YELLOW);
-		pirlog.FormattedMessage("WSTIMER              : %p", WSTIMER);
-		pirlog.FormattedMessage("GROUNDSNAP           : %p", GROUNDSNAP);
-		pirlog.FormattedMessage("OBJECTSNAP           : %p | original bytes: %02X%02X%02X%02X%02X%02X%02X%02X", OBJECTSNAP, OBJECTSNAP_OLDCODE[0], OBJECTSNAP_OLDCODE[1], OBJECTSNAP_OLDCODE[2], OBJECTSNAP_OLDCODE[3], OBJECTSNAP_OLDCODE[4], OBJECTSNAP_OLDCODE[5], OBJECTSNAP_OLDCODE[6], OBJECTSNAP_OLDCODE[7]);
-		pirlog.FormattedMessage("OUTLINES             : %p", OUTLINES);
-		pirlog.FormattedMessage("ZOOM                 : %p", ZOOM);
-		pirlog.FormattedMessage("ZOOM_FLOAT           : %p", uintptr_t(ZOOM) + (static_cast<uintptr_t>(ZOOM_REL32) + 8));
-		pirlog.FormattedMessage("ROTATE               : %p", ROTATE);
-		pirlog.FormattedMessage("ROTATE_FLOAT         : %p", uintptr_t(ROTATE) + (static_cast<uintptr_t>(ROTATE_REL32) + 8));
-		pirlog.FormattedMessage("ACHIEVEMENTS         : %p", ACHIEVEMENTS);
-		pirlog.FormattedMessage("WS_DRAWS_OLDCODE     : %p | original bytes: %02X%02X%02X%02X%02X%02X", WSSIZE, WS_DRAWS_OLDCODE[0], WS_DRAWS_OLDCODE[1], WS_DRAWS_OLDCODE[2], WS_DRAWS_OLDCODE[3], WS_DRAWS_OLDCODE[4], WS_DRAWS_OLDCODE[5]);
-		pirlog.FormattedMessage("WS_TRIANGLES_OLDCODE : %p | original bytes: %02X%02X%02X%02X%02X%02X", WSSIZE + 0x0A, WS_TRIANGLES_OLDCODE[0], WS_TRIANGLES_OLDCODE[1], WS_TRIANGLES_OLDCODE[2], WS_TRIANGLES_OLDCODE[3], WS_TRIANGLES_OLDCODE[4], WS_TRIANGLES_OLDCODE[5]);
-		pirlog.FormattedMessage("WSSIZE               : %p", uintptr_t(WSSIZE) + (static_cast<uintptr_t>(WSSIZE_REL32) + 6));
+		pirlog.FormattedMessage("--------------------------------------------------------------------");
+		pirlog.FormattedMessage("Base                  : %p", RelocationManager::s_baseAddr);
+		pirlog.FormattedMessage("ACHIEVEMENTS          : %p", ACHIEVEMENTS);
+		pirlog.FormattedMessage("ConsoleArgFinder      : %p | rel32: 0x%08X", ConsoleArgFinder, ConsoleArgRel32);
+		pirlog.FormattedMessage("CurrentWSRefFinder    : %p | rel32: 0x%08X | %p", CurrentWSRefFinder, CurrentRefBaseRel32, CurrentRefBase);
+		pirlog.FormattedMessage("ConsoleRefCallFinder  : %p", ConsoleRefCallFinder);
+		pirlog.FormattedMessage("ConsoleRefFuncFinder  : %p", ConsoleRefFuncFinder);
+		pirlog.FormattedMessage("ConsoleRefFuncAddress : %p | rel32: 0x%08X", ConsoleRefFuncAddress, static_cast<uintptr_t>(ConsoleRefFuncRel32));
+		pirlog.FormattedMessage("CHANGE_A              : %p", CHANGE_A);
+		pirlog.FormattedMessage("CHANGE_B              : %p", CHANGE_B);
+		pirlog.FormattedMessage("CHANGE_C              : %p | original bytes: %02X%02X%02X%02X%02X%02X%02X", CHANGE_C, CHANGE_C_OLD[0], CHANGE_C_OLD[1], CHANGE_C_OLD[2], CHANGE_C_OLD[3], CHANGE_C_OLD[4], CHANGE_C_OLD[5], CHANGE_C_OLD[6]);
+		pirlog.FormattedMessage("CHANGE_D              : %p | original bytes: %02X%02X%02X%02X%02X%02X%02X", CHANGE_D, CHANGE_D_OLD[0], CHANGE_D_OLD[1], CHANGE_D_OLD[2], CHANGE_D_OLD[3], CHANGE_D_OLD[4], CHANGE_D_OLD[5], CHANGE_D_OLD[6]);
+		pirlog.FormattedMessage("CHANGE_E              : %p", CHANGE_E);
+		pirlog.FormattedMessage("CHANGE_F              : %p", CHANGE_F);
+		pirlog.FormattedMessage("CHANGE_G              : %p", CHANGE_G);
+		pirlog.FormattedMessage("CHANGE_H              : %p", CHANGE_H);
+		pirlog.FormattedMessage("CHANGE_I              : %p", CHANGE_I);
+		pirlog.FormattedMessage("FirstConsoleFinder    : %p | rel32: 0x%08X", FirstConsoleFinder, FirstConsoleRel32);
+		pirlog.FormattedMessage("FirstObScriptFinder   : %p | rel32: 0x%08X", FirstObScriptFinder, FirstObScriptRel32);
+		pirlog.FormattedMessage("GConsoleFinder        : %p | rel32: 0x%08X | %p", GConsoleFinder, GConsoleRel32, GConsoleStatic);
+		pirlog.FormattedMessage("GDataHandlerFinder    : %p | rel32: 0x%08X | %p", GDataHandlerFinder, GDataHandlerRel32, GDataHandlerStatic);
+		pirlog.FormattedMessage("GetScaleFinder        : %p | rel32: 0x%08X", GetScaleFinder, GetScaleRel32);
+		pirlog.FormattedMessage("GROUNDSNAP            : %p", GROUNDSNAP);
+		pirlog.FormattedMessage("OBJECTSNAP            : %p | original bytes: %02X%02X%02X%02X%02X%02X%02X%02X", OBJECTSNAP, OBJECTSNAP_OLD[0], OBJECTSNAP_OLD[1], OBJECTSNAP_OLD[2], OBJECTSNAP_OLD[3], OBJECTSNAP_OLD[4], OBJECTSNAP_OLD[5], OBJECTSNAP_OLD[6], OBJECTSNAP_OLD[7]);
+		pirlog.FormattedMessage("OUTLINES              : %p", OUTLINES);
+		pirlog.FormattedMessage("RED                   : %p", RED);
+		pirlog.FormattedMessage("ROTATE                : %p", ROTATE);
+		pirlog.FormattedMessage("ROTATE_FLOAT          : %p", uintptr_t(ROTATE) + (static_cast<uintptr_t>(ROTATE_REL32) + 8));
+		pirlog.FormattedMessage("SetScaleFinder        : %p | rel32: 0x%08X", SetScaleFinder, SetScaleRel32);
+		pirlog.FormattedMessage("YELLOW                : %p", YELLOW);
+		pirlog.FormattedMessage("WSSIZE                : %p", uintptr_t(WSSIZE) + (static_cast<uintptr_t>(WSSIZE_REL32) + 6));
+		pirlog.FormattedMessage("WSTIMER               : %p", WSTIMER);
+		pirlog.FormattedMessage("WorkshopModeFinder    : %p | rel32: 0x%08X | %p", WorkshopModeFinder, WorkshopModeFinderRel32, WorkshopModeBoolAddress);
+		pirlog.FormattedMessage("WS_DRAWS_OLD          : %p | original bytes: %02X%02X%02X%02X%02X%02X", WSSIZE, WS_DRAWS_OLD[0], WS_DRAWS_OLD[1], WS_DRAWS_OLD[2], WS_DRAWS_OLD[3], WS_DRAWS_OLD[4], WS_DRAWS_OLD[5]);
+		pirlog.FormattedMessage("WS_TRIANGLES_OLD      : %p | original bytes: %02X%02X%02X%02X%02X%02X", WSSIZE + 0x0A, WS_TRIANGLES_OLD[0], WS_TRIANGLES_OLD[1], WS_TRIANGLES_OLD[2], WS_TRIANGLES_OLD[3], WS_TRIANGLES_OLD[4], WS_TRIANGLES_OLD[5]);
+		pirlog.FormattedMessage("ZOOM                  : %p", ZOOM);
+		pirlog.FormattedMessage("ZOOM_FLOAT            : %p", uintptr_t(ZOOM) + (static_cast<uintptr_t>(ZOOM_REL32) + 8));
+		pirlog.FormattedMessage("--------------------------------------------------------------------");
 	}
 
-	// first plugin function to run. search for patterns, save memory, relocate, etc.
+	// first to run and most important
 	static void Init()
 	{
 		PIR_LOG_PREP
@@ -809,7 +823,7 @@ namespace pir {
 		GConsoleFinder = Utility::pattern("48 8D 05 ? ? ? ? 48 89 2D ? ? ? ? 48 89 05 ? ? ? ? 89 2D ? ? ? ? 40 88 2D ? ? ? ? 48").count(1).get(0).get<uintptr_t>(); // for console print
 		SetScaleFinder = Utility::pattern("E8 ? ? ? ? 40 84 F6 75 07 81 63 10 FF FF DF FF 33 ED").count(1).get(0).get<uintptr_t>();
 		GetScaleFinder = Utility::pattern("66 89 BB 08 01 00 00 E8 ? ? ? ? 48 8B 0D ? ? ? ? 0F 28 F0 48").count(1).get(0).get<uintptr_t>();
-		CurrentRefFinder = Utility::pattern("48 8B 1D ? ? ? ? 4C 8D 24 C3 49 3B DC 0F 84 ? ? ? ? 66").count(1).get(0).get<uintptr_t>();
+		CurrentWSRefFinder = Utility::pattern("48 8B 1D ? ? ? ? 4C 8D 24 C3 49 3B DC 0F 84 ? ? ? ? 66").count(1).get(0).get<uintptr_t>();
 		WorkshopModeFinder = Utility::pattern("80 3D ? ? ? ? 00 74 0E C6 07 02 48 8B 5C 24 30 48 83 C4 20 5F C3").count(1).get(0).get<uintptr_t>(); //is player in ws mode
 		CHANGE_A = Utility::pattern("C6 05 ? ? ? ? 01 84 C0 75 A9 B1 02").count(1).get(0).get<uintptr_t>();
 		CHANGE_B = Utility::pattern("B2 01 88 15 ? ? ? ? EB 04 84 D2 74 07").count(1).get(0).get<uintptr_t>();
@@ -834,21 +848,21 @@ namespace pir {
 		ConsoleRefCallFinder = Utility::pattern("FF 90 D0 01 00 00 48 89 74 24 40 4C 8D 05 ? ? ? ? 4C").count(1).get(0).get<uintptr_t>(); //consolenamefix credit registrator2000
 		GDataHandlerFinder = Utility::pattern("48 83 3D ? ? ? ? 00 4D 8B F1 41 0F B6 F0 48 8B FA 48 8B D9 0F 84 ? ? ? ? 80 3D ? ? ? ? 00 48").count(1).get(0).get<uintptr_t>();
 	
-		// storing the old bytes and setting pointers
-		if (CHANGE_C) { ReadMemory((uintptr_t(CHANGE_C)), &CHANGE_C_OLDCODE, 0x07); }
-		if (CHANGE_D) { ReadMemory((uintptr_t(CHANGE_D)), &CHANGE_D_OLDCODE, 0x07); }
-		if (CHANGE_F) { ReadMemory((uintptr_t(CHANGE_F)), &CHANGE_F_OLDCODE, 0x06); }
-		if (OBJECTSNAP) { ReadMemory((uintptr_t(OBJECTSNAP)), &OBJECTSNAP_OLDCODE, 0x08); }
+		// store old bytes
+		if (CHANGE_C) { ReadMemory((uintptr_t(CHANGE_C)), &CHANGE_C_OLD, 0x07); }
+		if (CHANGE_D) { ReadMemory((uintptr_t(CHANGE_D)), &CHANGE_D_OLD, 0x07); }
+		if (CHANGE_F) { ReadMemory((uintptr_t(CHANGE_F)), &CHANGE_F_OLD, 0x06); }
+		if (OBJECTSNAP) { ReadMemory((uintptr_t(OBJECTSNAP)), &OBJECTSNAP_OLD, 0x08); }
 		if (ZOOM) { ReadMemory((uintptr_t(ZOOM) + 0x04), &ZOOM_REL32, sizeof(SInt32)); }
 		if (ROTATE) { ReadMemory((uintptr_t(ROTATE) + 0x04), &ROTATE_REL32, sizeof(SInt32)); }
 
 		if (WSSIZE) {
-			ReadMemory((uintptr_t(WSSIZE)), &WS_DRAWS_OLDCODE, 0x06);
-			ReadMemory((uintptr_t(WSSIZE) + 0x0A), &WS_TRIANGLES_OLDCODE, 0x06);
+			ReadMemory((uintptr_t(WSSIZE)), &WS_DRAWS_OLD, 0x06);
+			ReadMemory((uintptr_t(WSSIZE) + 0x0A), &WS_TRIANGLES_OLD, 0x06);
 			ReadMemory((uintptr_t(WSSIZE) + 0x02), &WSSIZE_REL32, sizeof(SInt32));
 		}
 
-		//console name fix credit registrator2000
+		
 		if (ConsoleRefCallFinder && ConsoleRefFuncFinder) {
 			ConsoleRefFuncRel32 = GetRel32FromPattern(ConsoleRefFuncFinder, 0x01, 0x05, 0x00); //rel32 of the good function
 			ConsoleRefFuncAddress = RelocationManager::s_baseAddr + (uintptr_t)ConsoleRefFuncRel32; // calculate the full address
@@ -884,8 +898,8 @@ namespace pir {
 			GDataHandlerStatic = RelocationManager::s_baseAddr + static_cast<uintptr_t>(GDataHandlerRel32);
 		}
 
-		if (CurrentRefFinder) {
-			CurrentRefBaseRel32 = GetRel32FromPattern(CurrentRefFinder, 0x03, 0x07, 0x00);
+		if (CurrentWSRefFinder) {
+			CurrentRefBaseRel32 = GetRel32FromPattern(CurrentWSRefFinder, 0x03, 0x07, 0x00);
 			CurrentRefBase = RelocationManager::s_baseAddr + static_cast<uintptr_t>(CurrentRefBaseRel32);
 		}
 
@@ -947,11 +961,11 @@ __declspec(dllexport) bool F4SEPlugin_Load(const F4SEInterface* f4seinterface)
 	}
 
 	// papyrus interface
-	g_papyrus = (F4SEPapyrusInterface*)f4seinterface->QueryInterface(kInterface_Papyrus);
-	if (!g_papyrus) {
-		pirlog.FormattedMessage("[%s] Plugin load failed! Failed to set papyrus interface.", thisfunc);
-		return false;
-	}
+	//g_papyrus = (F4SEPapyrusInterface*)f4seinterface->QueryInterface(kInterface_Papyrus);
+	//if (!g_papyrus) {
+		//pirlog.FormattedMessage("[%s] Plugin load failed! Failed to set papyrus interface.", thisfunc);
+		//return false;
+	//}
 	
 	// messaging interface
 	g_messaging = (F4SEMessagingInterface*)f4seinterface->QueryInterface(kInterface_Messaging);
@@ -968,8 +982,8 @@ __declspec(dllexport) bool F4SEPlugin_Load(const F4SEInterface* f4seinterface)
 	}
 		
 	// register papyrus functions
-	pirlog.FormattedMessage("[%s] Registering papyrus functions...", thisfunc);
-	g_papyrus->Register(papyrusPIR::RegisterFuncs);
+	//pirlog.FormattedMessage("[%s] Registering papyrus functions...", thisfunc);
+	//g_papyrus->Register(pir::RegisterFuncs);
 
 	// register message listener handler
 	pirlog.FormattedMessage("[%s] Registering message listeners...", thisfunc);
