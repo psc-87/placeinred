@@ -56,11 +56,11 @@ static SInt32 CurrentRefBaseRel32 = 0; // rel32 of base address
 
 // useful offsets
 static UInt64 bsfadenode_offsets[] = { 0x0, 0x0, 0x10 }; //bsfadenode
+static size_t bsfadenode_count = sizeof(bsfadenode_offsets) / sizeof(bsfadenode_offsets[0]);
 static UInt64 ref_offsets[] = { 0x0, 0x0, 0x10, 0x110 }; //current workshop TESObjectREFR
+static size_t ref_count = sizeof(ref_offsets) / sizeof(ref_offsets[0]);
 static UInt64 collision_offsets[] = { 0x0, 0x0, 0x10, 0x100 }; //bhkNiCollisionObject
 static size_t collision_count = sizeof(collision_offsets) / sizeof(collision_offsets[0]);
-static size_t ref_count = sizeof(ref_offsets) / sizeof(ref_offsets[0]);
-static size_t bsfadenode_count = sizeof(bsfadenode_offsets) / sizeof(bsfadenode_offsets[0]);
 
 // Pointers to memory patterns
 static uintptr_t* CHANGE_A = nullptr;
@@ -95,7 +95,8 @@ static UInt8 CHANGE_I_NEW[2] = { 0xEB, 0x30 };
 static UInt8 YELLOW_NEW[3] = { 0x90, 0x90, 0x90 }; //nop x3
 static UInt8 YELLOW_OLD[3] = { 0x8B, 0x58, 0x14 };
 static UInt8 WSTIMER_OLD[6] = { 0x0F, 0x85, 0xAB, 0x00, 0x00, 0x00 }; //jne
-static UInt8 WSTIMER_NEW[6] = { 0xE9, 0xAC, 0x00, 0x00, 0x00, 0x90 }; //jmp instead
+static UInt8 WSTIMER_NEW[6] = { 0xE9, 0xAC, 0x00, 0x00, 0x00, 0x90 }; //jmp instead A
+static UInt8 CONSOLEREF_OLD[6] = { 0xFF, 0x90, 0xD0, 0x01, 0x00, 0x00 }; //call qword ptr [rax+000001D0]
 
 
 // Allows achievements with mods and prevents game adding [MODS] in save file name
@@ -124,6 +125,7 @@ static UInt8 fROTATE_SLOWED[4] = { 0x00, 0x00, 0x00, 0x3F }; // 0.5f
 // On and off switches for toggling. These are the baked in defaults
 static bool PLACEINRED_ENABLED = false; //false, toggled on during F4SEPlugin_Load
 static bool ACHIEVEMENTS_ENABLED = false; //false, toggled on during F4SEPlugin_Load
+static bool ConsoleNameRef_ENABLED = false; //false must be manually toggled on this is another plugins idea
 static bool OBJECTSNAP_ENABLED = true; //true, game default
 static bool GROUNDSNAP_ENABLED = true; // true, game default
 static bool SLOW_ENABLED = false; // false, game default
@@ -136,8 +138,9 @@ extern "C" {
 namespace pir {
 
 	const char* logprefix = {"pir"};
-
-	char* stripNewlinesandpipes(const char* str) {
+	
+	//return char array with '\r' '\n' and '|' removed
+	char* StripNewLinesAndPipes(const char* str) {
 		size_t len = strlen(str);
 		char* newStr = new char[len + 1]; // Allocate memory for the new string
 
@@ -156,24 +159,6 @@ namespace pir {
 		return newStr;
 	}
 
-	static const std::string& GetPluginINIPath()
-	{
-		PIR_LOG_PREP
-		if (plugininifile.empty())
-		{
-			std::string	runtimePath = GetRuntimeDirectory();
-			if (!runtimePath.empty())
-			{
-				plugininifile = runtimePath + "Data\\F4SE\\Plugins\\PlaceInRed.ini";
-
-				pirlog.FormattedMessage("[%s::%s] %s", logprefix, thisfunc, plugininifile.c_str());
-
-			}
-		}
-
-		return plugininifile;
-	}
-
 	// Simple function to read memory (credit reg2k).
 	static bool ReadMemory(uintptr_t addr, void* data, size_t len) {
 		UInt32 oldProtect;
@@ -187,19 +172,19 @@ namespace pir {
 	}
 
 	// return rel32 from a pattern match
-	static SInt32 GetRel32FromPattern(uintptr_t* pattern, UInt64 rel32start, UInt64 rel32end, UInt64 specialmodify = 0x0)
+	static SInt32 GetRel32FromPattern(uintptr_t* pattern, UInt64 rel32start, UInt64 end, UInt64 specialmodify = 0x0)
 	{
 		// pattern: pattern match pointer
 		// rel32start:to reach start of rel32 from pattern
-		// rel32end: to reach end of rel32 instruction
-		// specifymodify: bytes to shift the result by, default 0 no change
+		// end: to reach end of instructions rel32
+		// specifymodify: bytes to shift the final result by, default 0 no change
 		if (pattern) {
 			SInt32 relish32 = 0;
 			if (!ReadMemory(uintptr_t(pattern) + rel32start, &relish32, sizeof(SInt32))) {
 				return 0;
 			}
 			else {
-				relish32 = (((uintptr_t(pattern) + rel32end) + relish32) - RelocationManager::s_baseAddr) + (specialmodify);
+				relish32 = (((uintptr_t(pattern) + end) + relish32) - RelocationManager::s_baseAddr) + (specialmodify);
 				return relish32;
 			}
 		}
@@ -272,6 +257,24 @@ namespace pir {
 			}
 		}
 		return nullptr;
+	}
+
+	// lock the current WS ref in place by changing the motion type to keyframed
+	void LockCurrentWSRef(bool unlock=0)
+	{
+		VirtualMachine* vm = (*g_gameVM)->m_virtualMachine;
+		TESObjectREFR* ref = GetCurrentWSRef();
+		UInt32 motion = 00000002; //Motion_Keyframed
+		bool acti = false; //akAllowACtivate
+		
+		if (unlock == 1) {
+			motion = 00000001; //Motion_Dynamic
+		}
+		
+		if (vm && ref) {
+			SetMotionType_Native(vm, NULL, ref, motion, acti);
+		}
+
 	}
 
 	// dump cell refids and position to the log file
@@ -417,16 +420,18 @@ namespace pir {
 		}
 
 		pirlog.FormattedMessage("---------------------------------------------------------");
-		pirlog.FormattedMessage("Type|opcode|rel32|[pointer]|short|long|params|needsparent|helptext");
+		pirlog.FormattedMessage("Type|opcode|rel32|address|short|long|params|needsparent|helptext");
 
 		for (ObScriptCommand* iter = FirstConsole; iter->opcode < (kObScript_NumConsoleCommands + kObScript_ConsoleOpBase); ++iter) {
 			if (iter) {
 				uintptr_t exeaddr = (uintptr_t) & (iter->execute);
 				uint64_t* funcptr = (uint64_t*)(exeaddr);
 				uint64_t relly = *funcptr - RelocationManager::s_baseAddr;
-				const char* cleanhelp = stripNewlinesandpipes(iter->helpText);
-
-				pirlog.FormattedMessage("C|%06X|Fallout4.exe+0x%08X|%p|%s|%s|%X|%X|%s", iter->opcode, relly, *funcptr, iter->shortName, iter->longName, iter->numParams, iter->needsParent, cleanhelp);
+				if (*funcptr == 0) {
+					relly = 0;
+				}
+				const char* cleanhelp = StripNewLinesAndPipes(iter->helpText);
+				pirlog.FormattedMessage("Console|%06X|Fallout4.exe+0x%08X|%p|%s|%s|%X|%X|%s", iter->opcode, relly, *funcptr, iter->shortName, iter->longName, iter->numParams, iter->needsParent, cleanhelp);
 			}
 		}
 
@@ -435,8 +440,11 @@ namespace pir {
 				uintptr_t exeaddr = (uintptr_t) & (iter->execute);
 				uint64_t* funcptr = (uint64_t*)(exeaddr);
 				uint64_t relly = *funcptr - RelocationManager::s_baseAddr;
-				const char* cleanhelp = stripNewlinesandpipes(iter->helpText);
-				pirlog.FormattedMessage("O|%06X|Fallout4.exe+0x%08X|%p|%s|%s|%X|%X|%s", iter->opcode, relly, *funcptr, iter->shortName, iter->longName, iter->numParams, iter->needsParent, cleanhelp);
+				if (*funcptr == 0) {
+					relly = 0;
+				}
+				const char* cleanhelp = StripNewLinesAndPipes(iter->helpText);
+				pirlog.FormattedMessage("ObScript|%06X|Fallout4.exe+0x%08X|%p|%s|%s|%X|%X|%s", iter->opcode, relly, *funcptr, iter->shortName, iter->longName, iter->numParams, iter->needsParent, cleanhelp);
 			}
 		}
 
@@ -574,6 +582,31 @@ namespace pir {
 		return false;
 	}
 
+	//toggle allowing achievements with mods
+	static bool Toggle_ConsoleRefName()
+	{
+		PIR_LOG_PREP
+		// its on - toggle it off
+		if (ConsoleRefFuncFinder && ConsoleRefCallFinder && ConsoleNameRef_ENABLED)
+		{
+			SafeWriteBuf(uintptr_t(ConsoleRefCallFinder), CONSOLEREF_OLD, sizeof(CONSOLEREF_OLD));
+			ConsoleNameRef_ENABLED = false;
+			pir::ConsolePrint("ConsoleRefName toggled off!");
+			return true;
+		}
+
+		// its off - toggle it on
+		if (ConsoleRefFuncFinder && ConsoleRefCallFinder && !ConsoleNameRef_ENABLED)
+		{
+			SafeWriteCall(uintptr_t(ConsoleRefCallFinder), ConsoleRefFuncAddress); //patch call
+			SafeWrite8(uintptr_t(ConsoleRefCallFinder) + 0x05, 0x90); //for a clean patch
+			ConsoleNameRef_ENABLED = true;
+			pir::ConsolePrint("ConsoleRefName toggled on!");
+			return true;
+		}
+		return false;
+	}
+
 	//toggle placing objects in red
 	static bool Toggle_PlaceInRed()
 	{
@@ -626,20 +659,19 @@ namespace pir {
 		TESObjectREFR* ref = GetCurrentWSRef(0);
 		if (ref) {
 			pirlog.FormattedMessage("-------------------------------------------------------------------------------------");
-			UInt8					formtype =			ref->GetFormType();
-			UInt32					formid =			ref->formID;
-			UInt32					refflags =			ref->flags;
-			UInt32					cellformid =		ref->parentCell->formID;
-			UInt64					rootflags =			ref->GetObjectRootNode()->flags;
-			const char*				rootname =			ref->GetObjectRootNode()->m_name.c_str();
-			UInt16					rootchildren =		ref->GetObjectRootNode()->m_children.m_size;
-			float					Px = ref->pos.x;
-			float					Py = ref->pos.y;
-			float					Pz = ref->pos.z;
-			float					Rx = ref->rot.z;
-			float					Ry = ref->rot.z;
-			float					Rz = ref->rot.z;
-
+			UInt8	formtype =          ref->GetFormType();
+			UInt32	formid =            ref->formID;
+			UInt32	refflags =          ref->flags;
+			UInt32	cellformid =        ref->parentCell->formID;
+			UInt64	rootflags =         ref->GetObjectRootNode()->flags;
+			const char* rootname =      ref->GetObjectRootNode()->m_name.c_str();
+			UInt16	rootchildren =      ref->GetObjectRootNode()->m_children.m_size;
+			float Px =                  ref->pos.x;
+			float Py =                  ref->pos.y;
+			float Pz =                  ref->pos.z;
+			float Rx =                  ref->rot.x;
+			float Ry =                  ref->rot.y;
+			float Rz =                  ref->rot.z;
 			pirlog.FormattedMessage("Pos             : %f %f %f", Px, Py, Pz);
 			pirlog.FormattedMessage("Rot             : %f %f %f", Rx, Ry, Rz);
 			pirlog.FormattedMessage("parentcell      : %04X", cellformid);
@@ -648,8 +680,15 @@ namespace pir {
 			pirlog.FormattedMessage("ref->formtype   : %01X (%d)", formtype, formtype);
 			pirlog.FormattedMessage("ref->formID     : %04X", formid);
 			pirlog.FormattedMessage("ref->flags      : %04X", refflags);
-		
 			pirlog.FormattedMessage("-------------------------------------------------------------------------------------");
+			
+			NiBound	rootnibound = ref->GetObjectRootNode()->m_worldBound;
+
+			float nbradius = rootnibound.m_fRadius;
+			int nbradiusint = rootnibound.m_iRadiusAsInt;
+			NiPoint3 nbcenter = rootnibound.m_kCenter;
+
+			pirlog.FormattedMessage("%f %i %f %f %f", nbradius, nbradiusint, nbcenter.x, nbcenter.y, nbcenter.z);
 
 		}
 	}
@@ -672,6 +711,10 @@ namespace pir {
 					case pir::ConsoleSwitch("moveself"):       pir::MoveRefToSelf(0,0,0,0);         break;
 					case pir::ConsoleSwitch("moveselftwice"):  pir::MoveRefToSelf(0,0,0,1);         break;
 
+					// lock and unlock
+					case pir::ConsoleSwitch("lock"):           pir::LockCurrentWSRef(0);            break;
+					case pir::ConsoleSwitch("unlock"):         pir::LockCurrentWSRef(1);            break;
+
 					//toggles
 					case pir::ConsoleSwitch("1"):              pir::Toggle_PlaceInRed();            break;
 					case pir::ConsoleSwitch("toggle"):         pir::Toggle_PlaceInRed();            break;
@@ -690,7 +733,7 @@ namespace pir {
 																	
 					//scale constants
 					case pir::ConsoleSwitch("scale1"):	       pir::SetCurrentRefScale(1.0000f);    break;
-					case pir::ConsoleSwitch("scale10"):	       pir::SetCurrentRefScale(10.000f);    break;
+					case pir::ConsoleSwitch("scale10"):	       pir::SetCurrentRefScale(9.9999f);    break;
 
 					//scale up												     
 					case pir::ConsoleSwitch("scaleup1"):	   pir::ModCurrentRefScale(1.0100f);    break;
@@ -866,10 +909,7 @@ namespace pir {
 		if (ConsoleRefCallFinder && ConsoleRefFuncFinder) {
 			ConsoleRefFuncRel32 = GetRel32FromPattern(ConsoleRefFuncFinder, 0x01, 0x05, 0x00); //rel32 of the good function
 			ConsoleRefFuncAddress = RelocationManager::s_baseAddr + (uintptr_t)ConsoleRefFuncRel32; // calculate the full address
-			SafeWriteCall(uintptr_t(ConsoleRefCallFinder), ConsoleRefFuncAddress); // now we can patch the call to use the good function
-			SafeWrite8(uintptr_t(ConsoleRefCallFinder) + 0x05, 0x90); // x1 nop for a clean patch
 		}
-
 
 		if (WorkshopModeFinder) {
 			WorkshopModeFinderRel32 = GetRel32FromPattern(WorkshopModeFinder, 0x02, 0x07, 0x00);
@@ -936,9 +976,6 @@ __declspec(dllexport) bool F4SEPlugin_Load(const F4SEInterface* f4seinterface)
 	pirlog.OpenRelative(CSIDL_MYDOCUMENTS, pluginLogFile);
 	pirlog.FormattedMessage("[%s] Plugin loaded!", thisfunc);
 
-	//determine where the ini file should be
-	pir::GetPluginINIPath();
-
 	// get a plugin handle
 	pirPluginHandle = f4seinterface->GetPluginHandle();
 	if (!pirPluginHandle) {
@@ -999,6 +1036,7 @@ __declspec(dllexport) bool F4SEPlugin_Load(const F4SEInterface* f4seinterface)
 	pirlog.FormattedMessage("[%s] Toggling on defaults...", thisfunc);
 	pir::Toggle_PlaceInRed();
 	pir::Toggle_Achievements();
+	pir::Toggle_ConsoleRefName();
 
 	// plugin loaded
 	pirlog.FormattedMessage("[%s] Plugin load finished!", thisfunc);
