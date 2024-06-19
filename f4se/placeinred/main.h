@@ -26,7 +26,7 @@ typedef void(*_SetMotionType_Native)(
     TESObjectREFR* objectReference, // r8  - TESObjectREFR
     int motionType,                 // r9  - 00000002 (motiontype)
     bool allowActivate
-    );
+);
 
 RelocAddr <_SetMotionType_Native> SetMotionType_Native(0x010D7B50);
 

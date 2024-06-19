@@ -66,6 +66,9 @@
     <PostBuildEvent>
       <Message>Copying PlaceInRed.dll to plugins folder</Message>
     </PostBuildEvent>
+    <BuildLog>
+      <Path />
+    </BuildLog>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">

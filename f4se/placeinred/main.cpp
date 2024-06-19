@@ -131,6 +131,10 @@ static bool GROUNDSNAP_ENABLED = true; // true, game default
 static bool SLOW_ENABLED = false; // false, game default
 static bool WORKSHOPSIZE_ENABLED = false; // false, game default
 static bool OUTLINES_ENABLED = true; // true, game default
+static bool LOCKUNLOCK_STATUS = 0; // track the last lock or unlock
+
+
+
 
 
 extern "C" {
@@ -138,6 +142,19 @@ extern "C" {
 namespace pir {
 
 	const char* logprefix = {"pir"};
+
+	static void testSound() {
+		TESForm* testsound = LookupFormByID(0x0001E300);
+		TESForm* testsound2 = LookupFormByID(0x001EAAC0);
+		BGSSoundDescriptorForm* soundForm = (BGSSoundDescriptorForm*)(testsound);
+		if (soundForm->formType == 0x84) {
+			pirlog.FormattedMessage("Sound looks good.");
+		} else {
+		
+			pirlog.FormattedMessage("FormType not a sound");
+		}
+		
+	}
 	
 	//return char array with '\r' '\n' and '|' removed
 	char* StripNewLinesAndPipes(const char* str) {
@@ -260,7 +277,7 @@ namespace pir {
 	}
 
 	// lock the current WS ref in place by changing the motion type to keyframed
-	void LockCurrentWSRef(bool unlock=0)
+	static void LockCurrentWSRef(bool unlock=0)
 	{
 		VirtualMachine* vm = (*g_gameVM)->m_virtualMachine;
 		TESObjectREFR* ref = GetCurrentWSRef();
@@ -275,6 +292,18 @@ namespace pir {
 			SetMotionType_Native(vm, NULL, ref, motion, acti);
 		}
 
+	}
+
+	// lock or unlock the curennt ref in place... whichever wasnt done last time
+	static void LockUnlockCurrentWSRef()
+	{
+		if (LOCKUNLOCK_STATUS == 0) {
+			LockCurrentWSRef(0);
+			LOCKUNLOCK_STATUS = 1;
+		} else {
+			LockCurrentWSRef(1);
+			LOCKUNLOCK_STATUS = 0;
+		}
 	}
 
 	// dump cell refids and position to the log file
@@ -710,10 +739,12 @@ namespace pir {
 					case pir::ConsoleSwitch("logref"):         pir::LogWSRef();                     break;
 					case pir::ConsoleSwitch("moveself"):       pir::MoveRefToSelf(0,0,0,0);         break;
 					case pir::ConsoleSwitch("moveselftwice"):  pir::MoveRefToSelf(0,0,0,1);         break;
+					case pir::ConsoleSwitch("t"):              pir::testSound();                     break;
 
 					// lock and unlock
 					case pir::ConsoleSwitch("lock"):           pir::LockCurrentWSRef(0);            break;
 					case pir::ConsoleSwitch("unlock"):         pir::LockCurrentWSRef(1);            break;
+					case pir::ConsoleSwitch("lockunlock"):     pir::LockUnlockCurrentWSRef();       break;
 
 					//toggles
 					case pir::ConsoleSwitch("1"):              pir::Toggle_PlaceInRed();            break;
