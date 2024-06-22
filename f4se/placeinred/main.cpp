@@ -44,6 +44,11 @@ static uintptr_t* WorkshopModeFinder = nullptr;
 static SInt32 WorkshopModeFinderRel32 = 0;
 static uintptr_t WorkshopModeBoolAddress;
 
+// SetMotionType
+static uintptr_t* SetMotionTypeFinder = nullptr;
+static SInt32 SetMotionTypeRel32 = 0;
+static _SetMotionType_Native SetMotionType_Native;
+
 // g_gamedata via pattern
 static uintptr_t* GDataHandlerFinder = nullptr;
 static SInt32 GDataHandlerRel32 = 0;
@@ -92,12 +97,11 @@ static UInt8 CHANGE_F_OLD[2] = { 0x88, 0x05 };
 static UInt8 CHANGE_F_NEW[2] = { 0xEB, 0x04 };
 static UInt8 CHANGE_I_OLD[2] = { 0x74, 0x35 };
 static UInt8 CHANGE_I_NEW[2] = { 0xEB, 0x30 };
-static UInt8 YELLOW_NEW[3] = { 0x90, 0x90, 0x90 }; //nop x3
+static UInt8 YELLOW_NEW[3] = { 0x0F, 0x1F, 0x00 }; //3 byte nop
 static UInt8 YELLOW_OLD[3] = { 0x8B, 0x58, 0x14 };
-static UInt8 WSTIMER_OLD[6] = { 0x0F, 0x85, 0xAB, 0x00, 0x00, 0x00 }; //jne
-static UInt8 WSTIMER_NEW[6] = { 0xE9, 0xAC, 0x00, 0x00, 0x00, 0x90 }; //jmp instead A
+static UInt8 WSTIMER_OLD[6] = { 0x0F, 0x85, 0xAB, 0x00, 0x00, 0x00 }; //original is jne
+static UInt8 WSTIMER_NEW[6] = { 0xE9, 0xAC, 0x00, 0x00, 0x00, 0x90 }; //jmp instead
 static UInt8 CONSOLEREF_OLD[6] = { 0xFF, 0x90, 0xD0, 0x01, 0x00, 0x00 }; //call qword ptr [rax+000001D0]
-
 
 // Allows achievements with mods and prevents game adding [MODS] in save file name
 static UInt8 ACHIEVEMENTS_NEW[3] = { 0x30, 0xC0, 0xC3 }; // xor al, al; ret
@@ -110,9 +114,9 @@ static UInt64 OBJECTSNAP_NEW = 0x9090909090F6570F; // xorps xmm6, xmm6; nop x5
 // Workshop size
 static SInt32 WSSIZE_REL32 = 0;
 static UInt8 WS_DRAWS_OLD[6];
-static UInt8 WS_DRAWS_NEW[6] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
+static UInt8 WS_DRAWS_NEW[6] = { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; //nop 6
 static UInt8 WS_TRIANGLES_OLD[6];
-static UInt8 WS_TRIANGLES_NEW[6] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
+static UInt8 WS_TRIANGLES_NEW[6] = { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; //nop 6
 
 // zoom and rotate
 static SInt32 ZOOM_REL32 = 0;
@@ -122,19 +126,8 @@ static UInt8 fZOOM_SLOWED[4] = { 0x00, 0x00, 0x80, 0x3F }; // 1.0f
 static UInt8 fROTATE_DEFAULT[4] = { 0x00, 0x00, 0xA0, 0x40 }; // 5.0f
 static UInt8 fROTATE_SLOWED[4] = { 0x00, 0x00, 0x00, 0x3F }; // 0.5f
 
-// On and off switches for toggling. These are the baked in defaults
-static bool PLACEINRED_ENABLED = false; //false, toggled on during F4SEPlugin_Load
-static bool ACHIEVEMENTS_ENABLED = false; //false, toggled on during F4SEPlugin_Load
-static bool ConsoleNameRef_ENABLED = false; //false must be manually toggled on this is another plugins idea
-static bool OBJECTSNAP_ENABLED = true; //true, game default
-static bool GROUNDSNAP_ENABLED = true; // true, game default
-static bool SLOW_ENABLED = false; // false, game default
-static bool WORKSHOPSIZE_ENABLED = false; // false, game default
-static bool OUTLINES_ENABLED = true; // true, game default
-static bool LOCKUNLOCK_STATUS = 0; // track the last lock or unlock
-
-
-
+// lockunlock function status tracker
+static bool LOCKUNLOCK_STATUS = 0;
 
 
 extern "C" {
@@ -142,21 +135,8 @@ extern "C" {
 namespace pir {
 
 	const char* logprefix = {"pir"};
-
-	static void testSound() {
-		TESForm* testsound = LookupFormByID(0x0001E300);
-		TESForm* testsound2 = LookupFormByID(0x001EAAC0);
-		BGSSoundDescriptorForm* soundForm = (BGSSoundDescriptorForm*)(testsound);
-		if (soundForm->formType == 0x84) {
-			pirlog.FormattedMessage("Sound looks good.");
-		} else {
-		
-			pirlog.FormattedMessage("FormType not a sound");
-		}
-		
-	}
 	
-	//return char array with '\r' '\n' and '|' removed
+	// return the same char array with '\r' '\n' and '|' removed
 	char* StripNewLinesAndPipes(const char* str) {
 		size_t len = strlen(str);
 		char* newStr = new char[len + 1]; // Allocate memory for the new string
@@ -277,7 +257,7 @@ namespace pir {
 	}
 
 	// lock the current WS ref in place by changing the motion type to keyframed
-	static void LockCurrentWSRef(bool unlock=0)
+	static void LockOrUnlockCurrentWSRef(bool unlock=0)
 	{
 		VirtualMachine* vm = (*g_gameVM)->m_virtualMachine;
 		TESObjectREFR* ref = GetCurrentWSRef();
@@ -292,18 +272,6 @@ namespace pir {
 			SetMotionType_Native(vm, NULL, ref, motion, acti);
 		}
 
-	}
-
-	// lock or unlock the curennt ref in place... whichever wasnt done last time
-	static void LockUnlockCurrentWSRef()
-	{
-		if (LOCKUNLOCK_STATUS == 0) {
-			LockCurrentWSRef(0);
-			LOCKUNLOCK_STATUS = 1;
-		} else {
-			LockCurrentWSRef(1);
-			LOCKUNLOCK_STATUS = 0;
-		}
 	}
 
 	// dump cell refids and position to the log file
@@ -734,17 +702,11 @@ namespace pir {
 			if (consoleresult && consolearg[0]) {
 				switch (ConsoleSwitch(consolearg)) {
 					// debug and tests
-					case pir::ConsoleSwitch("dumprefs"):       pir::DumpCellRefs();                 break;
-					case pir::ConsoleSwitch("dump"):           pir::DumpCmds();                     break;
+					case pir::ConsoleSwitch("dumpcellrefs"):   pir::DumpCellRefs();                 break;
+					case pir::ConsoleSwitch("dumpcmds"):       pir::DumpCmds();                     break;
 					case pir::ConsoleSwitch("logref"):         pir::LogWSRef();                     break;
 					case pir::ConsoleSwitch("moveself"):       pir::MoveRefToSelf(0,0,0,0);         break;
 					case pir::ConsoleSwitch("moveselftwice"):  pir::MoveRefToSelf(0,0,0,1);         break;
-					case pir::ConsoleSwitch("t"):              pir::testSound();                     break;
-
-					// lock and unlock
-					case pir::ConsoleSwitch("lock"):           pir::LockCurrentWSRef(0);            break;
-					case pir::ConsoleSwitch("unlock"):         pir::LockCurrentWSRef(1);            break;
-					case pir::ConsoleSwitch("lockunlock"):     pir::LockUnlockCurrentWSRef();       break;
 
 					//toggles
 					case pir::ConsoleSwitch("1"):              pir::Toggle_PlaceInRed();            break;
@@ -783,6 +745,12 @@ namespace pir {
 					case pir::ConsoleSwitch("scaledown25"):	   pir::ModCurrentRefScale(0.7500f);    break;
 					case pir::ConsoleSwitch("scaledown50"):	   pir::ModCurrentRefScale(0.5000f);    break;
 					case pir::ConsoleSwitch("scaledown75"):	   pir::ModCurrentRefScale(0.2500f);    break;
+
+					// lock and unlock
+					case pir::ConsoleSwitch("lock"):           pir::LockOrUnlockCurrentWSRef(0);            break;
+					case pir::ConsoleSwitch("l"):              pir::LockOrUnlockCurrentWSRef(0);            break;
+					case pir::ConsoleSwitch("unlock"):         pir::LockOrUnlockCurrentWSRef(1);            break;
+					case pir::ConsoleSwitch("u"):              pir::LockOrUnlockCurrentWSRef(1);            break;
 
 					default: pir::ConsolePrint(pirunknowncommandmsg);  break;
 				}
@@ -834,8 +802,10 @@ namespace pir {
 	{
 		if (ConsoleArgFinder && FirstConsoleFinder && FirstObScriptFinder && SetScaleFinder && GetScaleFinder && CurrentWSRefFinder
 			&& WorkshopModeFinder && GConsoleFinder && GDataHandlerFinder && CHANGE_A && CHANGE_B && CHANGE_C && CHANGE_D && CHANGE_E && CHANGE_F && CHANGE_G && CHANGE_H && CHANGE_I
-			&& YELLOW && RED && WSTIMER && GROUNDSNAP && OBJECTSNAP && OUTLINES && WSSIZE && ZOOM && ROTATE)
+			&& YELLOW && RED && WSTIMER && GROUNDSNAP && OBJECTSNAP && OUTLINES && WSSIZE && ZOOM && ROTATE && SetMotionTypeFinder)
 		{
+			// intentionally left out: ACHIEVEMENTS, ConsoleRefCallFinder
+			// allows plugin to load even if these arent found
 			return true;
 		}
 		else {
@@ -848,6 +818,7 @@ namespace pir {
 	{
 		pirlog.FormattedMessage("--------------------------------------------------------------------");
 		pirlog.FormattedMessage("Base                  : %p", RelocationManager::s_baseAddr);
+		pirlog.FormattedMessage("SetMotionTypeFinder   : %p", SetMotionTypeFinder);
 		pirlog.FormattedMessage("ACHIEVEMENTS          : %p", ACHIEVEMENTS);
 		pirlog.FormattedMessage("ConsoleArgFinder      : %p | rel32: 0x%08X", ConsoleArgFinder, ConsoleArgRel32);
 		pirlog.FormattedMessage("CurrentWSRefFinder    : %p | rel32: 0x%08X | %p", CurrentWSRefFinder, CurrentRefBaseRel32, CurrentRefBase);
@@ -886,12 +857,52 @@ namespace pir {
 		pirlog.FormattedMessage("--------------------------------------------------------------------");
 	}
 
-	// first to run and most important
+	//read the ini and set default settings
+	static void ToggleDefaults()
+	{
+		std::string PLACEINRED_ENABLED = GetPIRConfigOption("Main", "PLACEINRED_ENABLED");
+		std::string OBJECTSNAP_ENABLED = GetPIRConfigOption("Main", "OBJECTSNAP_ENABLED");
+		std::string GROUNDSNAP_ENABLED = GetPIRConfigOption("Main", "GROUNDSNAP_ENABLED");
+		std::string SLOW_ENABLED = GetPIRConfigOption("Main", "SLOW_ENABLED");
+		std::string WORKSHOPSIZE_ENABLED = GetPIRConfigOption("Main", "WORKSHOPSIZE_ENABLED");
+		std::string OUTLINES_ENABLED = GetPIRConfigOption("Main", "OUTLINES_ENABLED");
+		std::string ACHIEVEMENTS_ENABLED = GetPIRConfigOption("Main", "ACHIEVEMENTS_ENABLED");
+		std::string ConsoleNameRef_ENABLED = GetPIRConfigOption("Main", "ConsoleNameRef_ENABLED");
+
+		if (PLACEINRED_ENABLED == "1") {
+			pir::Toggle_PlaceInRed();
+		}
+		if (OBJECTSNAP_ENABLED == "0") {
+			pir::Toggle_ObjectSnap();
+		}
+		if (GROUNDSNAP_ENABLED == "0") {
+			pir::Toggle_GroundSnap();
+		}
+		if (SLOW_ENABLED == "1") {
+			pir::Toggle_SlowZoomAndRotate();
+		}
+		if (WORKSHOPSIZE_ENABLED == "1") {
+			pir::Toggle_WorkshopSize();
+		}
+		if (OUTLINES_ENABLED == "0") {
+			pir::Toggle_Outlines();
+		}
+		if (ACHIEVEMENTS_ENABLED == "1") {
+			pir::Toggle_Achievements();
+		}
+		if (ConsoleNameRef_ENABLED == "1") {
+			pir::Toggle_ConsoleRefName();
+		}
+
+	}
+
+	//init
 	static void Init()
 	{
 		PIR_LOG_PREP
 		// search for all the memory patterns
 		ConsoleArgFinder = Utility::pattern("4C 89 4C 24 20 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57").count(1).get(0).get<uintptr_t>();
+		SetMotionTypeFinder = Utility::pattern("48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 83 EC 50 45 32 E4 41 8D 41 FF").count(1).get(0).get<uintptr_t>();
 		FirstConsoleFinder = Utility::pattern("48 8D 1D ? ? ? ? 48 8D 35 ? ? ? ? 66 90 48 8B 53 F8").count(1).get(0).get<uintptr_t>();
 		FirstObScriptFinder = Utility::pattern("48 8D 1D ? ? ? ? 4C 8D 35 ? ? ? ? 0F 1F 40 00 0F 1F 84 00 00 00 00 00").count(1).get(0).get<uintptr_t>();
 		GConsoleFinder = Utility::pattern("48 8D 05 ? ? ? ? 48 89 2D ? ? ? ? 48 89 05 ? ? ? ? 89 2D ? ? ? ? 40 88 2D ? ? ? ? 48").count(1).get(0).get<uintptr_t>(); // for console print
@@ -935,7 +946,6 @@ namespace pir {
 			ReadMemory((uintptr_t(WSSIZE) + 0x0A), &WS_TRIANGLES_OLD, 0x06);
 			ReadMemory((uintptr_t(WSSIZE) + 0x02), &WSSIZE_REL32, sizeof(SInt32));
 		}
-
 		
 		if (ConsoleRefCallFinder && ConsoleRefFuncFinder) {
 			ConsoleRefFuncRel32 = GetRel32FromPattern(ConsoleRefFuncFinder, 0x01, 0x05, 0x00); //rel32 of the good function
@@ -992,11 +1002,15 @@ namespace pir {
 			FirstObScript = _FirstObScriptCommand;
 		}
 
+		if (SetMotionTypeFinder) {
+			SetMotionTypeRel32 = uintptr_t(SetMotionTypeFinder) - RelocationManager::s_baseAddr;
+			RelocAddr <_SetMotionType_Native> GimmeSetMotionType(SetMotionTypeRel32);
+			SetMotionType_Native = GimmeSetMotionType;
+		}
+
 	}
 
 }
-
-
 
 
 __declspec(dllexport) bool F4SEPlugin_Load(const F4SEInterface* f4seinterface)
@@ -1065,9 +1079,7 @@ __declspec(dllexport) bool F4SEPlugin_Load(const F4SEInterface* f4seinterface)
 
 	// toggle defaults
 	pirlog.FormattedMessage("[%s] Toggling on defaults...", thisfunc);
-	pir::Toggle_PlaceInRed();
-	pir::Toggle_Achievements();
-	pir::Toggle_ConsoleRefName();
+	pir::ToggleDefaults();
 
 	// plugin loaded
 	pirlog.FormattedMessage("[%s] Plugin load finished!", thisfunc);

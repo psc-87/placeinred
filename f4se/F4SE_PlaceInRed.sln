@@ -14,6 +14,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "f4se_common", "f4se_common\
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "PlaceInRed", "placeinred\placeinred.vcxproj", "{FC9A1EE6-D9DB-47F6-B0ED-8867439C43CE}"
 	ProjectSection(ProjectDependencies) = postProject
+		{A236F69D-8FF9-4491-AC5F-45BF49448BBE} = {A236F69D-8FF9-4491-AC5F-45BF49448BBE}
 		{D4C128A1-73DC-4941-A453-CE55AF239BA8} = {D4C128A1-73DC-4941-A453-CE55AF239BA8}
 	EndProjectSection
 EndProject
