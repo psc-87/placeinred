@@ -8,11 +8,23 @@
 #define PIR_LOG_PREP const char* thisfunc = __func__;
 
 // misc strings and vars
-static UInt32 pluginVersion = 8;
-static const char pluginName[] = { "PlaceInRed" };
-static const char pluginLogFile[] = { "\\My Games\\Fallout4\\F4SE\\PlaceInRed.log" };
-static const char* pirunknowncommandmsg = { "PlaceInRed (pir) usage:\n pir toggle (pir 1) toggle place in red\n pir osnap (pir 2) toggle object snapping\n pir gsnap (pir 3) toggle ground snapping\n pir slow (pir 4) toggle slower object rotation and zoom speed\n pir workshopsize (pir 5) toggle unlimited workshop build size\n pir outlines (pir 6) toggle object outlines\n pir achievements (pir 7) toggle achievement with mods\n pir scaleup1 (also: 1, 5, 10, 25, 50, 100) scale up percent\n pir scaledown1 (also: 1, 5, 10, 25, 50, 75) scale down percent\n pir lock (pir l) lock object in place (motiontype keyframed)\n pir unlock (pir u) unlock object (motiontype dynamic)" };
-
+static UInt32 pluginVersion = 9;
+static const char* pluginLogFile = { "\\My Games\\Fallout4\\F4SE\\PlaceInRed.log" };
+static const char* pirunknowncommandmsg =
+{
+	"PlaceInRed (pir) usage:\n"
+	"pir toggle       (pir 1) toggle place in red\n"
+	"pir osnap        (pir 2) toggle object snapping\n"
+	"pir gsnap        (pir 3) toggle ground snapping\n"
+	"pir slow         (pir 4) toggle slower object rotation and zoom speed\n"
+	"pir workshopsize (pir 5) toggle unlimited workshop build size\n"
+	"pir outlines     (pir 6) toggle object outlines\n"
+	"pir achievements (pir 7) toggle achievement with mods\n"
+	"pir scaleup1     (also: 1, 5, 10, 25, 50, 100) scale up percent\n"
+	"pir scaledown1   (also: 1, 5, 10, 25, 50, 75) scale down percent\n"
+	"pir lock         (pir l) lock object in place (motiontype keyframed)\n"
+	"pir unlock       (pir u) unlock object (motiontype dynamic)"
+};
 // f4se plugin
 extern IDebugLog pirlog;
 static PluginHandle pirPluginHandle = kPluginHandle_Invalid;
@@ -27,16 +39,16 @@ typedef void  (*_SetScale)             (TESObjectREFR* objRef, float scale);
 typedef bool  (*_GetConsoleArg)        (void* paramInfo, void* scriptData, void* opcodeOffsetPtr, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, ...);
 typedef void  (*_SetMotionType_Native) (VirtualMachine* vm, uint32_t stackID, TESObjectREFR* objectReference, int motionType, bool allowActivate);
 
-// ini stuff
-// default settings before ini is read
+// hard coded settings before ini is read
 static bool PLACEINRED_ENABLED = false;
-static bool ACHIEVEMENTS_ENABLED = false;
-static bool ConsoleNameRef_ENABLED = false;
 static bool OBJECTSNAP_ENABLED = true;
 static bool GROUNDSNAP_ENABLED = true;
 static bool SLOW_ENABLED = false;
 static bool WORKSHOPSIZE_ENABLED = false;
 static bool OUTLINES_ENABLED = true;
+static bool ACHIEVEMENTS_ENABLED = false;
+static bool ConsoleNameRef_ENABLED = false;
+
 
 // return the ini path as a std string
 const std::string& GetPIRConfigPath()

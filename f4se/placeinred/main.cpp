@@ -126,15 +126,12 @@ static UInt8 fZOOM_SLOWED[4] = { 0x00, 0x00, 0x80, 0x3F }; // 1.0f
 static UInt8 fROTATE_DEFAULT[4] = { 0x00, 0x00, 0xA0, 0x40 }; // 5.0f
 static UInt8 fROTATE_SLOWED[4] = { 0x00, 0x00, 0x00, 0x3F }; // 0.5f
 
-// lockunlock function status tracker
-static bool LOCKUNLOCK_STATUS = 0;
-
-
 extern "C" {
 
 namespace pir {
 
-	const char* logprefix = {"pir"};
+	const char* logprefix = { "pir" };
+
 	
 	// return the same char array with '\r' '\n' and '|' removed
 	char* StripNewLinesAndPipes(const char* str) {
@@ -257,7 +254,7 @@ namespace pir {
 	}
 
 	// lock the current WS ref in place by changing the motion type to keyframed
-	static void LockOrUnlockCurrentWSRef(bool unlock=0)
+	static void LockOrUnlockCurrentWSRef(bool unlock=0, bool sound=0)
 	{
 		VirtualMachine* vm = (*g_gameVM)->m_virtualMachine;
 		TESObjectREFR* ref = GetCurrentWSRef();
@@ -270,8 +267,10 @@ namespace pir {
 		
 		if (vm && ref) {
 			SetMotionType_Native(vm, NULL, ref, motion, acti);
+			if (sound == 1) {
+				PlayUISound("UIQuestInactive");
+			}
 		}
-
 	}
 
 	// dump cell refids and position to the log file
@@ -702,55 +701,56 @@ namespace pir {
 			if (consoleresult && consolearg[0]) {
 				switch (ConsoleSwitch(consolearg)) {
 					// debug and tests
-					case pir::ConsoleSwitch("dumpcellrefs"):   pir::DumpCellRefs();                 break;
-					case pir::ConsoleSwitch("dumpcmds"):       pir::DumpCmds();                     break;
-					case pir::ConsoleSwitch("logref"):         pir::LogWSRef();                     break;
-					case pir::ConsoleSwitch("moveself"):       pir::MoveRefToSelf(0,0,0,0);         break;
-					case pir::ConsoleSwitch("moveselftwice"):  pir::MoveRefToSelf(0,0,0,1);         break;
+					case pir::ConsoleSwitch("dumpcellrefs"):  pir::DumpCellRefs();             break;
+					case pir::ConsoleSwitch("dumpcmds"):      pir::DumpCmds();                 break;
+					case pir::ConsoleSwitch("logref"):        pir::LogWSRef();                 break;
+					case pir::ConsoleSwitch("moveself"):      pir::MoveRefToSelf(0,0,0,0);     break;
+					case pir::ConsoleSwitch("moveselftwice"): pir::MoveRefToSelf(0,0,0,1);     break;
 
 					//toggles
-					case pir::ConsoleSwitch("1"):              pir::Toggle_PlaceInRed();            break;
-					case pir::ConsoleSwitch("toggle"):         pir::Toggle_PlaceInRed();            break;
-					case pir::ConsoleSwitch("2"):              pir::Toggle_ObjectSnap();            break;
-					case pir::ConsoleSwitch("osnap"):          pir::Toggle_ObjectSnap();            break;
-					case pir::ConsoleSwitch("3"):              pir::Toggle_GroundSnap();            break;
-					case pir::ConsoleSwitch("gsnap"):          pir::Toggle_GroundSnap();            break;
-					case pir::ConsoleSwitch("4"):              pir::Toggle_SlowZoomAndRotate();     break;
-					case pir::ConsoleSwitch("slow"):           pir::Toggle_SlowZoomAndRotate();     break;
-					case pir::ConsoleSwitch("5"):              pir::Toggle_WorkshopSize();          break;
-					case pir::ConsoleSwitch("workshopsize"):   pir::Toggle_WorkshopSize();          break;
-					case pir::ConsoleSwitch("6"):              pir::Toggle_Outlines();              break;
-					case pir::ConsoleSwitch("outlines"):       pir::Toggle_Outlines();              break;
-					case pir::ConsoleSwitch("7"):              pir::Toggle_Achievements();          break;
-					case pir::ConsoleSwitch("achievements"):   pir::Toggle_Achievements();          break;
+					case pir::ConsoleSwitch("1"):             pir::Toggle_PlaceInRed();        break;
+					case pir::ConsoleSwitch("toggle"):        pir::Toggle_PlaceInRed();        break;
+					case pir::ConsoleSwitch("2"):             pir::Toggle_ObjectSnap();        break;
+					case pir::ConsoleSwitch("osnap"):         pir::Toggle_ObjectSnap();        break;
+					case pir::ConsoleSwitch("3"):             pir::Toggle_GroundSnap();        break;
+					case pir::ConsoleSwitch("gsnap"):         pir::Toggle_GroundSnap();        break;
+					case pir::ConsoleSwitch("4"):             pir::Toggle_SlowZoomAndRotate(); break;
+					case pir::ConsoleSwitch("slow"):          pir::Toggle_SlowZoomAndRotate(); break;
+					case pir::ConsoleSwitch("5"):             pir::Toggle_WorkshopSize();      break;
+					case pir::ConsoleSwitch("workshopsize"):  pir::Toggle_WorkshopSize();      break;
+					case pir::ConsoleSwitch("6"):             pir::Toggle_Outlines();          break;
+					case pir::ConsoleSwitch("outlines"):      pir::Toggle_Outlines();          break;
+					case pir::ConsoleSwitch("7"):             pir::Toggle_Achievements();      break;
+					case pir::ConsoleSwitch("achievements"):  pir::Toggle_Achievements();      break;
 																	
 					//scale constants
-					case pir::ConsoleSwitch("scale1"):	       pir::SetCurrentRefScale(1.0000f);    break;
-					case pir::ConsoleSwitch("scale10"):	       pir::SetCurrentRefScale(9.9999f);    break;
+					case pir::ConsoleSwitch("scale1"):	    pir::SetCurrentRefScale(1.0000f); break;
+					case pir::ConsoleSwitch("scale10"):	    pir::SetCurrentRefScale(9.9999f); break;
 
 					//scale up												     
-					case pir::ConsoleSwitch("scaleup1"):	   pir::ModCurrentRefScale(1.0100f);    break;
-					case pir::ConsoleSwitch("scaleup2"):	   pir::ModCurrentRefScale(1.0200f);    break;
-					case pir::ConsoleSwitch("scaleup5"):	   pir::ModCurrentRefScale(1.0500f);    break;
-					case pir::ConsoleSwitch("scaleup10"):	   pir::ModCurrentRefScale(1.1000f);    break;
-					case pir::ConsoleSwitch("scaleup25"):	   pir::ModCurrentRefScale(1.2500f);    break;
-					case pir::ConsoleSwitch("scaleup50"):	   pir::ModCurrentRefScale(1.5000f);    break;
-					case pir::ConsoleSwitch("scaleup100"):	   pir::ModCurrentRefScale(2.0000f);    break;
-															   								        
-					//scale down			   								        
-					case pir::ConsoleSwitch("scaledown1"):	   pir::ModCurrentRefScale(0.9900f);    break;
-					case pir::ConsoleSwitch("scaledown2"):	   pir::ModCurrentRefScale(0.9800f);    break;
-					case pir::ConsoleSwitch("scaledown5"):	   pir::ModCurrentRefScale(0.9500f);    break;
-					case pir::ConsoleSwitch("scaledown10"):	   pir::ModCurrentRefScale(0.9000f);    break;
-					case pir::ConsoleSwitch("scaledown25"):	   pir::ModCurrentRefScale(0.7500f);    break;
-					case pir::ConsoleSwitch("scaledown50"):	   pir::ModCurrentRefScale(0.5000f);    break;
-					case pir::ConsoleSwitch("scaledown75"):	   pir::ModCurrentRefScale(0.2500f);    break;
+					case pir::ConsoleSwitch("scaleup1"):	pir::ModCurrentRefScale(1.0100f); break;
+					case pir::ConsoleSwitch("scaleup2"):	pir::ModCurrentRefScale(1.0200f); break;
+					case pir::ConsoleSwitch("scaleup5"):	pir::ModCurrentRefScale(1.0500f); break;
+					case pir::ConsoleSwitch("scaleup10"):	pir::ModCurrentRefScale(1.1000f); break;
+					case pir::ConsoleSwitch("scaleup25"):	pir::ModCurrentRefScale(1.2500f); break;
+					case pir::ConsoleSwitch("scaleup50"):	pir::ModCurrentRefScale(1.5000f); break;
+					case pir::ConsoleSwitch("scaleup100"):	pir::ModCurrentRefScale(2.0000f); break;
+															   								     
+					//scale down			   								        			 
+					case pir::ConsoleSwitch("scaledown1"):	pir::ModCurrentRefScale(0.9900f); break;
+					case pir::ConsoleSwitch("scaledown2"):	pir::ModCurrentRefScale(0.9800f); break;
+					case pir::ConsoleSwitch("scaledown5"):	pir::ModCurrentRefScale(0.9500f); break;
+					case pir::ConsoleSwitch("scaledown10"):	pir::ModCurrentRefScale(0.9000f); break;
+					case pir::ConsoleSwitch("scaledown25"):	pir::ModCurrentRefScale(0.7500f); break;
+					case pir::ConsoleSwitch("scaledown50"):	pir::ModCurrentRefScale(0.5000f); break;
+					case pir::ConsoleSwitch("scaledown75"):	pir::ModCurrentRefScale(0.2500f); break;
 
 					// lock and unlock
-					case pir::ConsoleSwitch("lock"):           pir::LockOrUnlockCurrentWSRef(0);            break;
-					case pir::ConsoleSwitch("l"):              pir::LockOrUnlockCurrentWSRef(0);            break;
-					case pir::ConsoleSwitch("unlock"):         pir::LockOrUnlockCurrentWSRef(1);            break;
-					case pir::ConsoleSwitch("u"):              pir::LockOrUnlockCurrentWSRef(1);            break;
+					case pir::ConsoleSwitch("lock"):   pir::LockOrUnlockCurrentWSRef(0, 1); break;
+					case pir::ConsoleSwitch("l"):      pir::LockOrUnlockCurrentWSRef(0, 1); break;
+					case pir::ConsoleSwitch("lockq"):  pir::LockOrUnlockCurrentWSRef(0, 0); break; // no sound
+					case pir::ConsoleSwitch("unlock"): pir::LockOrUnlockCurrentWSRef(1, 0); break;
+					case pir::ConsoleSwitch("u"):      pir::LockOrUnlockCurrentWSRef(1, 0); break;
 
 					default: pir::ConsolePrint(pirunknowncommandmsg);  break;
 				}
@@ -801,10 +801,11 @@ namespace pir {
 	static bool FoundRequiredMemoryPatterns()
 	{
 		if (ConsoleArgFinder && FirstConsoleFinder && FirstObScriptFinder && SetScaleFinder && GetScaleFinder && CurrentWSRefFinder
-			&& WorkshopModeFinder && GConsoleFinder && GDataHandlerFinder && CHANGE_A && CHANGE_B && CHANGE_C && CHANGE_D && CHANGE_E && CHANGE_F && CHANGE_G && CHANGE_H && CHANGE_I
+			&& WorkshopModeFinder && GConsoleFinder && CHANGE_A && CHANGE_B && CHANGE_C && CHANGE_D && CHANGE_E && CHANGE_F && CHANGE_G && CHANGE_H && CHANGE_I
 			&& YELLOW && RED && WSTIMER && GROUNDSNAP && OBJECTSNAP && OUTLINES && WSSIZE && ZOOM && ROTATE && SetMotionTypeFinder)
 		{
 			// intentionally left out: ACHIEVEMENTS, ConsoleRefCallFinder
+			// GDataHandlerFinder not using yet
 			// allows plugin to load even if these arent found
 			return true;
 		}
@@ -1098,14 +1099,6 @@ __declspec(dllexport) F4SEPluginVersionData F4SEPlugin_Version = {
 	},
 	0,
 };
-
-__declspec(dllexport) bool F4SEPlugin_Query(const F4SEInterface* f4seinterface, PluginInfo* plugininfo) {
-	// this used anymore?
-	plugininfo->infoVersion = PluginInfo::kInfoVersion;
-	plugininfo->name = pluginName;
-	plugininfo->version = pluginVersion;
-	return true;
-}
 
 
 }
