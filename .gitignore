@@ -361,3 +361,9 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+/f4se/f4se_common/f4se_common.vcxproj
+/f4se/f4se_common/f4se_common.vcxproj.filters
+/f4se/f4se/f4se.vcxproj
+/f4se/f4se/f4se.vcxproj.filters
+/common/common/common_vc11.vcxproj
+/common/common/common_vc11.vcxproj.filters
