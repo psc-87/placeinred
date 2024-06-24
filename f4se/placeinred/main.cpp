@@ -126,15 +126,18 @@ static UInt8 fZOOM_SLOWED[4] = { 0x00, 0x00, 0x80, 0x3F }; // 1.0f
 static UInt8 fROTATE_DEFAULT[4] = { 0x00, 0x00, 0xA0, 0x40 }; // 5.0f
 static UInt8 fROTATE_SLOWED[4] = { 0x00, 0x00, 0x00, 0x3F }; // 0.5f
 
+
+typedef void(*_EffectShaderPlay)(TESObjectREFR* ref, TESEffectShader* shader, float time, void* unk1, UInt32 unk2, void* unk3, void* unk4, UInt32 unk5);
+RelocAddr<_EffectShaderPlay> EffectShaderPlay(0x004BF130);
+
 extern "C" {
 
 namespace pir {
 
 	const char* logprefix = { "pir" };
 
-	
 	// return the same char array with '\r' '\n' and '|' removed
-	char* StripNewLinesAndPipes(const char* str) {
+	static char* StripNewLinesAndPipes(const char* str) {
 		size_t len = strlen(str);
 		char* newStr = new char[len + 1]; // Allocate memory for the new string
 
@@ -186,7 +189,8 @@ namespace pir {
 	}
 
 	// read the address at an address+offset
-	static uintptr_t GimmeSinglePointer(uintptr_t address, UInt64 offset) {
+	static uintptr_t GimmeSinglePointer(uintptr_t address, UInt64 offset)
+	{
 		uintptr_t result = 0;
 		if (ReadMemory(address + offset, &result, sizeof(uintptr_t))) {
 			return result;
@@ -197,7 +201,8 @@ namespace pir {
 	}
 
 	//return a pointer to a base address with offets
-	static uintptr_t* GimmeMultiPointer(uintptr_t baseAddress, UInt64* offsets, UInt64 numOffsets) {
+	static uintptr_t* GimmeMultiPointer(uintptr_t baseAddress, UInt64* offsets, UInt64 numOffsets)
+	{
 		if (!baseAddress || baseAddress == 0) {
 			return nullptr;
 		}
@@ -213,8 +218,8 @@ namespace pir {
 	}
 
 	// Determine if player is in workshop mode
-	static bool InWorkshopMode() {
-		PIR_LOG_PREP
+	static bool InWorkshopMode()
+	{
 			if (WorkshopModeFinder) {
 				UInt8 WSMODE = 0x00;
 				ReadMemory(uintptr_t(WorkshopModeBoolAddress), &WSMODE, sizeof(bool));
@@ -471,7 +476,6 @@ namespace pir {
 	//toggle slower object rotation and zoom speed
 	static bool Toggle_SlowZoomAndRotate()
 	{
-		PIR_LOG_PREP
 		// its on, turn it off
 		if (ZOOM && ROTATE && ZOOM_REL32 != 0 && ROTATE_REL32 != 0 && SLOW_ENABLED) {
 			SafeWriteBuf(uintptr_t(ZOOM) + (static_cast<uintptr_t>(ZOOM_REL32) + 8), fZOOM_DEFAULT, sizeof(fZOOM_DEFAULT));
@@ -494,7 +498,6 @@ namespace pir {
 	//toggle infinite workshop size
 	static bool Toggle_WorkshopSize()
 	{
-		PIR_LOG_PREP
 		if (WSSIZE && WORKSHOPSIZE_ENABLED) {
 			SafeWriteBuf((uintptr_t)WSSIZE, WS_DRAWS_OLD, sizeof(WS_DRAWS_OLD));
 			SafeWriteBuf((uintptr_t)WSSIZE + 0x0A, WS_TRIANGLES_OLD, sizeof(WS_TRIANGLES_OLD));
@@ -704,8 +707,8 @@ namespace pir {
 					case pir::ConsoleSwitch("dumpcellrefs"):  pir::DumpCellRefs();             break;
 					case pir::ConsoleSwitch("dumpcmds"):      pir::DumpCmds();                 break;
 					case pir::ConsoleSwitch("logref"):        pir::LogWSRef();                 break;
-					case pir::ConsoleSwitch("moveself"):      pir::MoveRefToSelf(0,0,0,0);     break;
-					case pir::ConsoleSwitch("moveselftwice"): pir::MoveRefToSelf(0,0,0,1);     break;
+					case pir::ConsoleSwitch("moveself"):      pir::MoveRefToSelf(0, 0, 0, 0);  break;
+					case pir::ConsoleSwitch("moveselftwice"): pir::MoveRefToSelf(0, 0, 0, 1);  break;
 
 					//toggles
 					case pir::ConsoleSwitch("1"):             pir::Toggle_PlaceInRed();        break;
@@ -724,26 +727,26 @@ namespace pir {
 					case pir::ConsoleSwitch("achievements"):  pir::Toggle_Achievements();      break;
 																	
 					//scale constants
-					case pir::ConsoleSwitch("scale1"):	    pir::SetCurrentRefScale(1.0000f); break;
-					case pir::ConsoleSwitch("scale10"):	    pir::SetCurrentRefScale(9.9999f); break;
-
-					//scale up												     
-					case pir::ConsoleSwitch("scaleup1"):	pir::ModCurrentRefScale(1.0100f); break;
-					case pir::ConsoleSwitch("scaleup2"):	pir::ModCurrentRefScale(1.0200f); break;
-					case pir::ConsoleSwitch("scaleup5"):	pir::ModCurrentRefScale(1.0500f); break;
-					case pir::ConsoleSwitch("scaleup10"):	pir::ModCurrentRefScale(1.1000f); break;
-					case pir::ConsoleSwitch("scaleup25"):	pir::ModCurrentRefScale(1.2500f); break;
-					case pir::ConsoleSwitch("scaleup50"):	pir::ModCurrentRefScale(1.5000f); break;
-					case pir::ConsoleSwitch("scaleup100"):	pir::ModCurrentRefScale(2.0000f); break;
-															   								     
-					//scale down			   								        			 
-					case pir::ConsoleSwitch("scaledown1"):	pir::ModCurrentRefScale(0.9900f); break;
-					case pir::ConsoleSwitch("scaledown2"):	pir::ModCurrentRefScale(0.9800f); break;
-					case pir::ConsoleSwitch("scaledown5"):	pir::ModCurrentRefScale(0.9500f); break;
-					case pir::ConsoleSwitch("scaledown10"):	pir::ModCurrentRefScale(0.9000f); break;
-					case pir::ConsoleSwitch("scaledown25"):	pir::ModCurrentRefScale(0.7500f); break;
-					case pir::ConsoleSwitch("scaledown50"):	pir::ModCurrentRefScale(0.5000f); break;
-					case pir::ConsoleSwitch("scaledown75"):	pir::ModCurrentRefScale(0.2500f); break;
+					case pir::ConsoleSwitch("scale1"):	      pir::SetCurrentRefScale(1.0000f); break;
+					case pir::ConsoleSwitch("scale10"):	      pir::SetCurrentRefScale(9.9999f); break;
+														     
+					//scale up								  				     
+					case pir::ConsoleSwitch("scaleup1"):	  pir::ModCurrentRefScale(1.0100f); break;
+					case pir::ConsoleSwitch("scaleup2"):	  pir::ModCurrentRefScale(1.0200f); break;
+					case pir::ConsoleSwitch("scaleup5"):	  pir::ModCurrentRefScale(1.0500f); break;
+					case pir::ConsoleSwitch("scaleup10"):	  pir::ModCurrentRefScale(1.1000f); break;
+					case pir::ConsoleSwitch("scaleup25"):	  pir::ModCurrentRefScale(1.2500f); break;
+					case pir::ConsoleSwitch("scaleup50"):	  pir::ModCurrentRefScale(1.5000f); break;
+					case pir::ConsoleSwitch("scaleup100"):	  pir::ModCurrentRefScale(2.0000f); break;
+															     								     
+					//scale down			   				  				        			 
+					case pir::ConsoleSwitch("scaledown1"):	  pir::ModCurrentRefScale(0.9900f); break;
+					case pir::ConsoleSwitch("scaledown2"):	  pir::ModCurrentRefScale(0.9800f); break;
+					case pir::ConsoleSwitch("scaledown5"):	  pir::ModCurrentRefScale(0.9500f); break;
+					case pir::ConsoleSwitch("scaledown10"):   pir::ModCurrentRefScale(0.9000f); break;
+					case pir::ConsoleSwitch("scaledown25"):   pir::ModCurrentRefScale(0.7500f); break;
+					case pir::ConsoleSwitch("scaledown50"):   pir::ModCurrentRefScale(0.5000f); break;
+					case pir::ConsoleSwitch("scaledown75"):	  pir::ModCurrentRefScale(0.2500f); break;
 
 					// lock and unlock
 					case pir::ConsoleSwitch("lock"):   pir::LockOrUnlockCurrentWSRef(0, 1); break;
@@ -765,7 +768,6 @@ namespace pir {
 	//attempt to create the console command
 	static bool CreateConsoleCommand()
 	{
-		PIR_LOG_PREP
 		if (FirstConsole == nullptr) {
 			return false;
 		}
@@ -902,14 +904,15 @@ namespace pir {
 	{
 		PIR_LOG_PREP
 		// search for all the memory patterns
+		//PlayUISound = Utility::pattern("48 89 5C 24 08 57 48 83 EC 50 48 8B D9 E8 ? ? ? ? 48 85 C0 74 6A C7 44 24 68 FF FF FF FF").count(1).get(0).get<uintptr_t>();
 		ConsoleArgFinder = Utility::pattern("4C 89 4C 24 20 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57").count(1).get(0).get<uintptr_t>();
 		SetMotionTypeFinder = Utility::pattern("48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 83 EC 50 45 32 E4 41 8D 41 FF").count(1).get(0).get<uintptr_t>();
 		FirstConsoleFinder = Utility::pattern("48 8D 1D ? ? ? ? 48 8D 35 ? ? ? ? 66 90 48 8B 53 F8").count(1).get(0).get<uintptr_t>();
 		FirstObScriptFinder = Utility::pattern("48 8D 1D ? ? ? ? 4C 8D 35 ? ? ? ? 0F 1F 40 00 0F 1F 84 00 00 00 00 00").count(1).get(0).get<uintptr_t>();
 		GConsoleFinder = Utility::pattern("48 8D 05 ? ? ? ? 48 89 2D ? ? ? ? 48 89 05 ? ? ? ? 89 2D ? ? ? ? 40 88 2D ? ? ? ? 48").count(1).get(0).get<uintptr_t>(); // for console print
-		SetScaleFinder = Utility::pattern("E8 ? ? ? ? 40 84 F6 75 07 81 63 10 FF FF DF FF 33 ED").count(1).get(0).get<uintptr_t>();
-		GetScaleFinder = Utility::pattern("66 89 BB 08 01 00 00 E8 ? ? ? ? 48 8B 0D ? ? ? ? 0F 28 F0 48").count(1).get(0).get<uintptr_t>();
-		CurrentWSRefFinder = Utility::pattern("48 8B 1D ? ? ? ? 4C 8D 24 C3 49 3B DC 0F 84 ? ? ? ? 66").count(1).get(0).get<uintptr_t>();
+		SetScaleFinder = Utility::pattern("E8 ? ? ? ? 40 84 F6 75 07 81 63 10 FF FF DF FF 33 ED").count(1).get(0).get<uintptr_t>(); //setscale
+		GetScaleFinder = Utility::pattern("66 89 BB 08 01 00 00 E8 ? ? ? ? 48 8B 0D ? ? ? ? 0F 28 F0 48").count(1).get(0).get<uintptr_t>(); //getscale
+		CurrentWSRefFinder = Utility::pattern("48 8B 1D ? ? ? ? 4C 8D 24 C3 49 3B DC 0F 84 ? ? ? ? 66").count(1).get(0).get<uintptr_t>(); //has address leading to current WS ref
 		WorkshopModeFinder = Utility::pattern("80 3D ? ? ? ? 00 74 0E C6 07 02 48 8B 5C 24 30 48 83 C4 20 5F C3").count(1).get(0).get<uintptr_t>(); //is player in ws mode
 		CHANGE_A = Utility::pattern("C6 05 ? ? ? ? 01 84 C0 75 A9 B1 02").count(1).get(0).get<uintptr_t>();
 		CHANGE_B = Utility::pattern("B2 01 88 15 ? ? ? ? EB 04 84 D2 74 07").count(1).get(0).get<uintptr_t>();
@@ -1010,6 +1013,9 @@ namespace pir {
 		}
 
 	}
+
+
+
 
 }
 

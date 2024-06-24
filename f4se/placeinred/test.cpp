@@ -1328,7 +1328,7 @@ void ApplyShaderEffect(StaticFunctionTag* base, TESObjectREFR* obj, TESForm* eff
 // Stop the given shader form on the given object.
 // TODO: Pass the shader as a TESEffectShader initially.
 void RemoveShaderEffect(StaticFunctionTag* base, TESObjectREFR* obj, TESForm* effectShaderForm)
-{
+{TESEffectShader* effectShader = DYNAMIC_CAST(effectShaderForm, TESForm, TESEffectShader);
 	TESEffectShader* effectShader = DYNAMIC_CAST(effectShaderForm, TESForm, TESEffectShader);
 	if (effectShader)
 		EffectShaderStop(*qword_145907F18, obj, effectShader);
