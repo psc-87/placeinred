@@ -39,7 +39,7 @@ typedef void  (*_SetScale)             (TESObjectREFR* objRef, float scale);
 typedef bool  (*_GetConsoleArg)        (void* paramInfo, void* scriptData, void* opcodeOffsetPtr, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, ...);
 typedef void  (*_SetMotionType_Native) (VirtualMachine* vm, uint32_t stackID, TESObjectREFR* objectReference, int motionType, bool allowActivate);
 
-// hard coded settings before ini is read
+// hard coded defaults. modified frequently by the plugin
 static bool PLACEINRED_ENABLED = false;
 static bool OBJECTSNAP_ENABLED = true;
 static bool GROUNDSNAP_ENABLED = true;
@@ -48,6 +48,7 @@ static bool WORKSHOPSIZE_ENABLED = false;
 static bool OUTLINES_ENABLED = true;
 static bool ACHIEVEMENTS_ENABLED = false;
 static bool ConsoleNameRef_ENABLED = false;
+static bool PrintConsoleMessages = true;
 
 
 // return the ini path as a std string
