@@ -4,7 +4,7 @@
 #include "f4se.h"
 #include <string.h>
 
-//cool purple macro to set this
+// set thisfunc to __func__
 #define PIR_LOG_PREP const char* thisfunc = __func__;
 
 // misc strings and vars
@@ -20,8 +20,8 @@ static const char* pirunknowncommandmsg =
 	"pir workshopsize (pir 5) toggle unlimited workshop build size\n"
 	"pir outlines     (pir 6) toggle object outlines\n"
 	"pir achievements (pir 7) toggle achievement with mods\n"
-	"pir scaleup1     (also: 1, 5, 10, 25, 50, 100) scale up percent\n"
-	"pir scaledown1   (also: 1, 5, 10, 25, 50, 75) scale down percent\n"
+	"pir scaleup1     (and 2, 5, 10, 25, 50, 100) scale up percent\n"
+	"pir scaledown1   (and 2, 5, 10, 25, 50, 75) scale down percent\n"
 	"pir lock         (pir l) lock object in place (motiontype keyframed)\n"
 	"pir unlock       (pir u) unlock object (motiontype dynamic)"
 };
@@ -39,17 +39,26 @@ typedef void  (*_SetScale)             (TESObjectREFR* objRef, float scale);
 typedef bool  (*_GetConsoleArg)        (void* paramInfo, void* scriptData, void* opcodeOffsetPtr, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, ...);
 typedef void  (*_SetMotionType_Native) (VirtualMachine* vm, uint32_t stackID, TESObjectREFR* objectReference, int motionType, bool allowActivate);
 
-// hard coded defaults. modified frequently by the plugin
-static bool PLACEINRED_ENABLED = false;
-static bool OBJECTSNAP_ENABLED = true;
-static bool GROUNDSNAP_ENABLED = true;
-static bool SLOW_ENABLED = false;
-static bool WORKSHOPSIZE_ENABLED = false;
-static bool OUTLINES_ENABLED = true;
-static bool ACHIEVEMENTS_ENABLED = false;
-static bool ConsoleNameRef_ENABLED = false;
-static bool PrintConsoleMessages = true;
 
+//structure for plugin settings
+struct PluginSettings
+{
+	bool PLACEINRED_ENABLED = false;
+	bool OBJECTSNAP_ENABLED = true;
+	bool GROUNDSNAP_ENABLED = true;
+	bool SLOW_ENABLED = false;
+	bool WORKSHOPSIZE_ENABLED = false;
+	bool OUTLINES_ENABLED = true;
+	bool ACHIEVEMENTS_ENABLED = false;
+	bool ConsoleNameRef_ENABLED = false;
+	bool PrintConsoleMessages = true;
+	Float32 fSlowerROTATE = 0.5;
+	Float32 fSlowerZOOM = 1.0;
+	bool GameDataIsReady = false; //set to true when F4SE tells us its ready
+};
+
+//create one
+static PluginSettings PIRSettings;
 
 // return the ini path as a std string
 const std::string& GetPIRConfigPath()
@@ -74,10 +83,29 @@ std::string GetPIRConfigOption(const char* section, const char* key)
 	const std::string& configPath = GetPIRConfigPath();
 	if (!configPath.empty())
 	{
-		char	resultBuf[256];
+		char	resultBuf[2048];
 		resultBuf[0] = 0;
 		UInt32	resultLen = GetPrivateProfileString(section, key, NULL, resultBuf, sizeof(resultBuf), configPath.c_str());
 		result = resultBuf;
 	}
 	return result;
+}
+
+static Float32 FloatFromString(std::string fString, Float32 min = 0.001, Float32 max = 999.999)
+{
+	Float32 theFloat = 0;
+	try
+	{
+		theFloat = std::stof(fString);
+	}
+	catch (...)
+	{
+		return 0;
+	}
+
+	if (theFloat > min && theFloat < max) {
+		return theFloat;
+	} else {
+		return 0;
+	}
 }

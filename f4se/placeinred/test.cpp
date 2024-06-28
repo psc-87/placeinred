@@ -1,3 +1,11 @@
+/*
+scratch pad for good code snippets
+most of this is from the F4SE clipboard mod
+some of it my own stuff
+*/
+
+
+
 #include <shlobj.h>
 #include "f4se_common/f4se_version.h"
 #include "f4se_common/Relocation.h"
@@ -95,6 +103,20 @@ static bool ModCurrentRefAngle(char axis, float fModify)
 	return false;
 }
 
+	// papyrus setup during plugin load
+
+	//g_papyrus = (F4SEPapyrusInterface*)f4seinterface->QueryInterface(kInterface_Papyrus);
+	//if (!g_papyrus)
+	//{
+		//pirlog.FormattedMessage("[%s] Plugin load failed! Failed to set papyrus interface.", thisfunc);
+		//return false;
+	//}
+	// register papyrus functions
+	//pirlog.FormattedMessage("[%s] Registering papyrus functions...", thisfunc);
+	//g_papyrus->Register(pir::RegisterFuncs);
+
+
+
 /*
 if (ModAngleXFinder && ModAngleYFinder && ModAngleZFinder) {
 	ModAngleXRel32 = uintptr_t(ModAngleXFinder) - RelocationManager::s_baseAddr;
@@ -133,6 +155,16 @@ Fallout4.exe+27A294 - 44 8D 51 02           - lea r10d,[rcx+02]
 
 
 */
+
+
+/*
+
+
+
+*/
+
+
+
 
 
 const char pluginName[] = { "ClipboardExtension" };
