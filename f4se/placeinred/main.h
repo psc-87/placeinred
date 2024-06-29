@@ -25,6 +25,7 @@ static const char* pirunknowncommandmsg =
 	"pir lock         (pir l) lock object in place (motiontype keyframed)\n"
 	"pir unlock       (pir u) unlock object (motiontype dynamic)"
 };
+
 // f4se plugin
 extern IDebugLog pirlog;
 static PluginHandle pirPluginHandle = kPluginHandle_Invalid;
@@ -52,8 +53,8 @@ struct PluginSettings
 	bool ACHIEVEMENTS_ENABLED = false;
 	bool ConsoleNameRef_ENABLED = false;
 	bool PrintConsoleMessages = true;
-	Float32 fSlowerROTATE = 0.5;
-	Float32 fSlowerZOOM = 1.0;
+	Float32 fSlowerROTATE = 0.5F;
+	Float32 fSlowerZOOM = 1.0F;
 	bool GameDataIsReady = false; //set to true when F4SE tells us its ready
 };
 
@@ -91,6 +92,7 @@ std::string GetPIRConfigOption(const char* section, const char* key)
 	return result;
 }
 
+// string to float for ini conversion
 static Float32 FloatFromString(std::string fString, Float32 min = 0.001, Float32 max = 999.999)
 {
 	Float32 theFloat = 0;

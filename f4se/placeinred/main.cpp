@@ -79,13 +79,22 @@ static uintptr_t* WSSIZE = nullptr;
 static uintptr_t* OUTLINES = nullptr;
 static uintptr_t* AchievementsFinder = nullptr;
 
-// For proper toggling 
+// For proper toggling
+static UInt8 NOP1[1] = { 0x90 }; // 1 byte nop
+static UInt8 NOP2[2] = { 0x66, 0x90 }; // 2 byte nop
+static UInt8 NOP3[3] = { 0x0F, 0x1F, 0x00 }; // 3 byte nop
+static UInt8 NOP4[4] = { 0x0F, 0x1F, 0x40, 0x00 }; // 4 byte nop
+static UInt8 NOP5[5] = { 0x0F, 0x1F, 0x44, 0x00, 0x00 }; // 5 byte nop
+static UInt8 NOP6[6] = { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; // 6 byte nop
+static UInt8 NOP7[7] = { 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00 }; // 7 byte nop
+static UInt8 NOP8[8] = { 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }; // 8 byte nop
+
 static UInt8 CHANGE_C_OLD[7];
 static UInt8 CHANGE_C_NEW[7] = { 0x31, 0xC0, 0x90, 0x90, 0x90, 0x90, 0x90 }; //xor al,al;nop x5
 static UInt8 CHANGE_D_OLD[7];
 static UInt8 CHANGE_D_NEW[7] = { 0x31, 0xC0, 0xB0, 0x01, 0x90, 0x90, 0x90 }; //xor al,al;mov al,01;nop x3
-static UInt8 CHANGE_F_OLD[2] = { 0x88, 0x05 };
-static UInt8 CHANGE_F_NEW[2] = { 0xEB, 0x04 };
+static UInt8 CHANGE_F_OLD[6];
+//static UInt8 CHANGE_F_NEW[2] = { 0xEB, 0x04 };
 static UInt8 CHANGE_I_OLD[2] = { 0x74, 0x35 };
 static UInt8 CHANGE_I_NEW[2] = { 0xEB, 0x30 };
 static UInt8 YELLOW_OLD[3] = { 0x8B, 0x58, 0x14 };
@@ -95,13 +104,14 @@ static UInt8 WSTIMER_NEW[6] = { 0xE9, 0xAC, 0x00, 0x00, 0x00, 0x90 }; //jmp inst
 
 static UInt8 Achieve_NEW[3] = { 0x30, 0xC0, 0xC3 }; // xor al, al; ret
 static UInt8 Achieve_OLD[4] = { 0x48, 0x83, 0xEC, 0x28 }; // sub rsp,28
+
 static UInt8 OSNAP_OLD[8];
 static UInt64 OSNAP_NEW = 0x9090909090F6570F; // xorps xmm6, xmm6; nop x5
 
 static SInt32 WSSIZE_REL32 = 0;
 static UInt8 WSDRAWS_OLD[6];
 static UInt8 WSTRIS_OLD[6];
-static UInt8 NOP6[6] = { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; //6 byte nop
+
 
 static UInt8 CONSOLEREF_OLD[6] = { 0xFF, 0x90, 0xD0, 0x01, 0x00, 0x00 }; //call qword ptr [rax+000001D0]
 
@@ -605,11 +615,11 @@ extern "C"
 				SafeWrite8((uintptr_t)CHANGE_C + 0x1D, 0x00); // added june 2024 to test potential improvement
 				SafeWriteBuf((uintptr_t)CHANGE_D, CHANGE_D_NEW, sizeof(CHANGE_D_NEW));
 				SafeWrite8((uintptr_t)CHANGE_E + 0x00, 0xEB);
-				SafeWriteBuf((uintptr_t)CHANGE_F, CHANGE_F_NEW, sizeof(CHANGE_F_NEW));
+				SafeWriteBuf((uintptr_t)CHANGE_F, NOP6, sizeof(NOP6));
 				SafeWrite8((uintptr_t)CHANGE_G + 0x01, 0x98); // works but look at again later
 				SafeWrite8((uintptr_t)CHANGE_H + 0x00, 0xEB);
 				SafeWriteBuf((uintptr_t)CHANGE_I, CHANGE_I_NEW, sizeof(CHANGE_I_NEW));
-				SafeWrite8((uintptr_t)RED + 0xC, 0x00);
+				SafeWrite8((uintptr_t)RED + 0x0C, 0x00);
 				SafeWriteBuf((uintptr_t)YELLOW, YELLOW_NEW, sizeof(YELLOW_NEW));
 				SafeWriteBuf((uintptr_t)WSTIMER, WSTIMER_NEW, sizeof(WSTIMER_NEW));
 				PIRSettings.PLACEINRED_ENABLED = true;
@@ -908,8 +918,44 @@ extern "C"
 			}
 
 		}
-		//init
-		static void Init()
+		
+		//init f4se stuff and return false if anything fails
+		static bool Init_F4SE(const F4SEInterface* f4se)
+		{
+			PIR_LOG_PREP
+			// get a plugin handle
+			pirPluginHandle = f4se->GetPluginHandle();
+			if (!pirPluginHandle) {
+				pirlog.FormattedMessage("[%s] Plugin load failed! Couldn't get a plugin handle!", thisfunc);
+				return false;
+			}
+			pirlog.FormattedMessage("[%s] Got a plugin handle.", thisfunc);
+
+			// messaging interface
+			g_messaging = (F4SEMessagingInterface*)f4se->QueryInterface(kInterface_Messaging);
+			if (!g_messaging) {
+				pirlog.FormattedMessage("[%s] Plugin load failed! Failed to set messaging interface.", thisfunc);
+				return false;
+			}
+
+			// object interface
+			g_object = (F4SEObjectInterface*)f4se->QueryInterface(kInterface_Object);
+			if (!g_object) {
+				pirlog.FormattedMessage("[%s] Plugin load failed! Failed to set object interface.", thisfunc);
+				return false;
+			}
+
+			// register message listener handler
+			if (g_messaging->RegisterListener(pirPluginHandle, "F4SE", pir::MessageInterfaceHandler) == false) {
+				return false;
+			}
+
+			pirlog.FormattedMessage("[%s] F4SE interfaces are set.", thisfunc);
+			return true;
+
+		}
+		
+		static void Init_PlaceInRed()
 		{
 			// search for memory patterns
 			ConsoleArgFinder = Utility::pattern("4C 89 4C 24 20 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57").count(1).get(0).get<uintptr_t>();
@@ -949,8 +995,6 @@ extern "C"
 			if (CHANGE_D) { ReadMemory((uintptr_t(CHANGE_D)), &CHANGE_D_OLD, 0x07); }
 			if (CHANGE_F) { ReadMemory((uintptr_t(CHANGE_F)), &CHANGE_F_OLD, 0x06); }
 			if (OBJECTSNAP) { ReadMemory((uintptr_t(OBJECTSNAP)), &OSNAP_OLD, 0x08); }
-			//if (ZoomFinder) { ReadMemory((uintptr_t(ZoomFinder) + 0x04), &ZoomRel32, sizeof(SInt32)); }
-			//if (RotateFinder) { ReadMemory((uintptr_t(RotateFinder) + 0x04), &RotateRel32, sizeof(SInt32)); }
 
 			if (WSSIZE) {
 				ReadMemory((uintptr_t(WSSIZE) + 0x00), &WSDRAWS_OLD, 0x06);
@@ -1031,7 +1075,7 @@ extern "C"
 	}
 
 
-	__declspec(dllexport) bool F4SEPlugin_Load(const F4SEInterface* f4seinterface)
+	__declspec(dllexport) bool F4SEPlugin_Load(const F4SEInterface* f4se)
 	{
 		PIR_LOG_PREP
 
@@ -1039,17 +1083,11 @@ extern "C"
 		pirlog.OpenRelative(CSIDL_MYDOCUMENTS, pluginLogFile);
 		pirlog.FormattedMessage("[%s] Plugin loaded.", thisfunc);
 
-		// get a plugin handle
-		pirlog.FormattedMessage("[%s] Getting plugin handle.", thisfunc);
-		pirPluginHandle = f4seinterface->GetPluginHandle();
-		if (!pirPluginHandle) {
-			pirlog.FormattedMessage("[%s] Plugin load failed! Couldn't get a plugin handle!", thisfunc);
+		if (!pir::Init_F4SE(f4se)){
 			return false;
 		}
 
-		// init
-		pirlog.FormattedMessage("[%s] Initialization.", thisfunc);
-		pir::Init();
+		pir::Init_PlaceInRed();
 
 		// check memory patterns
 		if (!pir::FoundRequiredMemoryPatterns())
@@ -1059,22 +1097,7 @@ extern "C"
 			return false;
 		}
 
-		// messaging interface
-		g_messaging = (F4SEMessagingInterface*)f4seinterface->QueryInterface(kInterface_Messaging);
-		if (!g_messaging) {
-			pirlog.FormattedMessage("[%s] Plugin load failed! Failed to set messaging interface.", thisfunc);
-			return false;
-		}
 
-		// object interface
-		g_object = (F4SEObjectInterface*)f4seinterface->QueryInterface(kInterface_Object);
-		if (!g_object) {
-			pirlog.FormattedMessage("[%s] Plugin load failed! Failed to set object interface.", thisfunc);
-			return false;
-		}
-
-		// register message listener handler
-		g_messaging->RegisterListener(pirPluginHandle, "F4SE", pir::MessageInterfaceHandler);
 
 		// attempt to create the console command
 		pirlog.FormattedMessage("[%s] Creating console command.", thisfunc);
