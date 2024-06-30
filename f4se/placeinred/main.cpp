@@ -1,132 +1,5 @@
 #include "main.h"
 
-// SetScale
-static _SetScale SetScale = nullptr;
-static uintptr_t* SetScaleFinder = nullptr;
-static SInt32 SetScaleRel32 = 0;
-
-// GetScale
-static _GetScale GetScale = nullptr;
-static uintptr_t* GetScaleFinder = nullptr;
-static SInt32 GetScaleRel32 = 0;
-
-// ConsoleNameFix (credit registrator2000)
-static uintptr_t* ConsoleRefFuncFinder = nullptr; //pattern to find the function that really gives us the ref name
-static SInt32 ConsoleRefFuncRel32 = 0; // rel32
-static uintptr_t ConsoleRefFuncAddress; //the address for the function that really gives us the ref name
-static uintptr_t* ConsoleRefCallFinder = nullptr; //function called when references are clicked
-
-// Console command creation and parsing. Credit to reg2k
-static _GetConsoleArg GetConsoleArg; // to parse arguments from user after execution
-static uintptr_t* ConsoleArgFinder = nullptr; // memory pattern to find the real function
-static SInt32 ConsoleArgRel32 = 0; // rel32 set later on
-
-// First Console Command
-static uintptr_t* FirstConsoleFinder = nullptr; // pattern where the first console command is referenced
-static ObScriptCommand* FirstConsole = nullptr; // obscriptcommand first console command
-static SInt32 FirstConsoleRel32 = 0; // rel32 set later on
-
-// First ObScript Command
-static uintptr_t* FirstObScriptFinder = nullptr; // pattern where the first Obscript command is referenced
-static ObScriptCommand* FirstObScript = nullptr; // obscriptcommand first console command
-static SInt32 FirstObScriptRel32 = 0; // rel32 set later on
-
-//gconsole console print
-static uintptr_t* GConsoleFinder = nullptr; //pattern to find g_console
-static SInt32 GConsoleRel32 = 0; // rel32 set later on
-static uintptr_t GConsoleStatic; // g_console
-
-// workshop mode finder
-static uintptr_t* WSModeFinder = nullptr;
-static SInt32 WSModeFinderRel32 = 0;
-static uintptr_t WSModeBoolAddress;
-
-// SetMotionType
-static uintptr_t* SetMotionTypeFinder = nullptr;
-static SInt32 SetMotionTypeRel32 = 0;
-static _SetMotionType_Native SetMotionType_Native;
-
-// g_gamedata via pattern
-static uintptr_t* GDataHandlerFinder = nullptr;
-static SInt32 GDataHandlerRel32 = 0;
-static uintptr_t GDataHandlerStatic;
-
-// Currently grabbed or highlighted workshop reference
-static uintptr_t* CurrentWSRefFinder = nullptr; // pattern to help us find it
-static uintptr_t CurrentRefBase; // base address
-static SInt32 CurrentRefBaseRel32 = 0; // rel32 of base address
-
-// useful offsets
-static UInt64 ref_offsets[] = { 0x0, 0x0, 0x10, 0x110 }; //current workshop TESObjectREFR
-static size_t ref_count = sizeof(ref_offsets) / sizeof(ref_offsets[0]);
-
-// Pointers to memory patterns
-static uintptr_t* CHANGE_A = nullptr;
-static uintptr_t* CHANGE_B = nullptr;
-static uintptr_t* CHANGE_C = nullptr;
-static uintptr_t* CHANGE_D = nullptr;
-static uintptr_t* CHANGE_E = nullptr;
-static uintptr_t* CHANGE_F = nullptr;
-static uintptr_t* CHANGE_G = nullptr;
-static uintptr_t* CHANGE_H = nullptr;
-static uintptr_t* CHANGE_I = nullptr;
-static uintptr_t* RED = nullptr;
-static uintptr_t* YELLOW = nullptr;
-static uintptr_t* WSTIMER = nullptr;
-static uintptr_t* GROUNDSNAP = nullptr;
-static uintptr_t* OBJECTSNAP = nullptr;
-static uintptr_t* WSSIZE = nullptr;
-static uintptr_t* OUTLINES = nullptr;
-static uintptr_t* AchievementsFinder = nullptr;
-
-// For proper toggling
-static UInt8 NOP1[1] = { 0x90 }; // 1 byte nop
-static UInt8 NOP2[2] = { 0x66, 0x90 }; // 2 byte nop
-static UInt8 NOP3[3] = { 0x0F, 0x1F, 0x00 }; // 3 byte nop
-static UInt8 NOP4[4] = { 0x0F, 0x1F, 0x40, 0x00 }; // 4 byte nop
-static UInt8 NOP5[5] = { 0x0F, 0x1F, 0x44, 0x00, 0x00 }; // 5 byte nop
-static UInt8 NOP6[6] = { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; // 6 byte nop
-static UInt8 NOP7[7] = { 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00 }; // 7 byte nop
-static UInt8 NOP8[8] = { 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }; // 8 byte nop
-
-static UInt8 CHANGE_C_OLD[7];
-static UInt8 CHANGE_C_NEW[7] = { 0x31, 0xC0, 0x90, 0x90, 0x90, 0x90, 0x90 }; //xor al,al;nop x5
-static UInt8 CHANGE_D_OLD[7];
-static UInt8 CHANGE_D_NEW[7] = { 0x31, 0xC0, 0xB0, 0x01, 0x90, 0x90, 0x90 }; //xor al,al;mov al,01;nop x3
-static UInt8 CHANGE_F_OLD[6];
-//static UInt8 CHANGE_F_NEW[2] = { 0xEB, 0x04 };
-static UInt8 CHANGE_I_OLD[2] = { 0x74, 0x35 };
-static UInt8 CHANGE_I_NEW[2] = { 0xEB, 0x30 };
-static UInt8 YELLOW_OLD[3] = { 0x8B, 0x58, 0x14 };
-static UInt8 YELLOW_NEW[3] = { 0x0F, 0x1F, 0x00 }; //3 byte nop
-static UInt8 WSTIMER_OLD[6] = { 0x0F, 0x85, 0xAB, 0x00, 0x00, 0x00 }; //original is jne
-static UInt8 WSTIMER_NEW[6] = { 0xE9, 0xAC, 0x00, 0x00, 0x00, 0x90 }; //jmp instead
-
-static UInt8 Achieve_NEW[3] = { 0x30, 0xC0, 0xC3 }; // xor al, al; ret
-static UInt8 Achieve_OLD[4] = { 0x48, 0x83, 0xEC, 0x28 }; // sub rsp,28
-
-static UInt8 OSNAP_OLD[8];
-static UInt64 OSNAP_NEW = 0x9090909090F6570F; // xorps xmm6, xmm6; nop x5
-
-static SInt32 WSSIZE_REL32 = 0;
-static UInt8 WSDRAWS_OLD[6];
-static UInt8 WSTRIS_OLD[6];
-
-
-static UInt8 CONSOLEREF_OLD[6] = { 0xFF, 0x90, 0xD0, 0x01, 0x00, 0x00 }; //call qword ptr [rax+000001D0]
-
-// zoom and rotate
-static uintptr_t* ZoomFinder = nullptr;
-static uintptr_t* RotateFinder = nullptr;
-static uintptr_t ZoomAddress;
-static uintptr_t RotateAddress;
-static SInt32 ZoomRel32 = 0;
-static SInt32 RotateRel32 = 0;
-static Float32 fOriginalZOOM = 10.0; //game default. updated later to fItemHoldDistantSpeed:Workshop
-static Float32 fOriginalROTATE = 5.0; //game default. updated later to fItemRotationSpeed:Workshop
-static Float32 fSlowerZOOM = 1.0; //plugin default. updated later to plugin ini value
-static Float32 fSlowerROTATE = 0.5; //plugin default. updated later to plugin ini value
-
 extern "C"
 {
 	namespace pir {
@@ -217,9 +90,9 @@ extern "C"
 		// Determine if player is in workshop mode
 		static bool InWorkshopMode()
 		{
-			if (WSModeFinder) {
+			if (WSMode.finder) {
 				UInt8 WSMODE = 0x00;
-				ReadMemory(uintptr_t(WSModeBoolAddress), &WSMODE, sizeof(bool));
+				ReadMemory(uintptr_t(WSMode.addr), &WSMODE, sizeof(bool));
 				if (WSMODE == 0x01) {
 					return true;
 				}
@@ -231,27 +104,25 @@ extern "C"
 		static TESObjectREFR* GetCurrentWSRef(bool refonly = 1)
 		{
 			PIR_LOG_PREP
-				if (CurrentWSRefFinder && CurrentRefBase && pir::InWorkshopMode()) {
+			if (CurrentWSRef.finder && CurrentWSRef.addr && pir::InWorkshopMode()) {
 
-					uintptr_t* refptr = GimmeMultiPointer(CurrentRefBase, ref_offsets, ref_count);
-					TESObjectREFR* ref = (TESObjectREFR*)(refptr);
+				uintptr_t* refptr = GimmeMultiPointer(CurrentWSRef.addr, Patches.currentwsref_offsets, Patches.currentwsref_offsets_size);
+				TESObjectREFR* ref = (TESObjectREFR*)(refptr);
 
-					if (ref)
-					{
-						if (!ref->formID) { return nullptr; }
-						if (ref->formID <= 0) { return nullptr; }
+				if (ref)
+				{
+					if (!ref->formID) { return nullptr; }
+					if (ref->formID <= 0) { return nullptr; }
 
-						//optional but checks by default
-						if (refonly) {
-							if (ref->formType != 0x40) {
-								return nullptr;
-							}
+					//optional but checks by default
+					if (refonly) {
+						if (ref->formType != 0x40) {
+							return nullptr;
 						}
-						//return the ref if we get here
-						return ref;
-
 					}
+					return ref;
 				}
+			}
 			return nullptr;
 		}
 
@@ -268,7 +139,7 @@ extern "C"
 			}
 
 			if (vm && ref) {
-				SetMotionType_Native(vm, NULL, ref, motion, acti);
+				SetMotionType.func(vm, NULL, ref, motion, acti);
 				if (sound == 1) {
 					PlayUISound("UIQuestInactive");
 				}
@@ -300,9 +171,9 @@ extern "C"
 		// copied from f4se and modified for use with the pattern
 		static void ConsolePrint(const char* fmt, ...)
 		{
-			if (GConsoleFinder && GConsoleStatic && PIRSettings.PrintConsoleMessages)
+			if (gConsole.finder && gConsole.addr && PIRSettings.PrintConsoleMessages)
 			{
-				ConsoleManager* mgr = (ConsoleManager*)GConsoleStatic;
+				ConsoleManager* mgr = (ConsoleManager*)gConsole.addr;
 				if (mgr) {
 					va_list args;
 					va_start(args, fmt);
@@ -342,7 +213,7 @@ extern "C"
 		{
 			TESObjectREFR* ref = GetCurrentWSRef();
 			if (ref) {
-				SetScale(ref, newScale);
+				ScaleFuncs.SetScale(ref, newScale);
 				return true;
 			}
 			return false;
@@ -383,11 +254,11 @@ extern "C"
 			PIR_LOG_PREP
 				TESObjectREFR* ref = GetCurrentWSRef();
 			if (ref) {
-				float oldscale = GetScale(ref);
+				float oldscale = ScaleFuncs.GetScale(ref);
 				float newScale = oldscale * (fMultiplyAmount);
 				if (newScale > 9.9999f) { newScale = 9.9999f; }
 				if (newScale < 0.0001f) { newScale = 0.0001f; }
-				SetScale(ref, newScale);
+				ScaleFuncs.SetScale(ref, newScale);
 				pir::MoveRefToSelf(0, 0, 0, 1); //repeat once to fix jitter
 				return true;
 			}
@@ -399,14 +270,14 @@ extern "C"
 		{
 			PIR_LOG_PREP
 
-				if (FirstConsole == nullptr || FirstObScript == nullptr) {
-					return false;
-				}
+			if (PIRConsole.consolecmd == nullptr || PIRConsole.obscriptcmd == nullptr) {
+				return false;
+			}
 
 			pirlog.FormattedMessage("---------------------------------------------------------");
 			pirlog.FormattedMessage("Type|opcode|rel32|address|short|long|params|needsparent|helptext");
 
-			for (ObScriptCommand* iter = FirstConsole; iter->opcode < (kObScript_NumConsoleCommands + kObScript_ConsoleOpBase); ++iter) {
+			for (ObScriptCommand* iter = PIRConsole.consolecmd; iter->opcode < (kObScript_NumConsoleCommands + kObScript_ConsoleOpBase); ++iter) {
 				if (iter) {
 					uintptr_t exeaddr = (uintptr_t) & (iter->execute);
 					uint64_t* funcptr = (uint64_t*)(exeaddr);
@@ -419,7 +290,7 @@ extern "C"
 				}
 			}
 
-			for (ObScriptCommand* iter = FirstObScript; iter->opcode < (kObScript_NumObScriptCommands + kObScript_ScriptOpBase); ++iter) {
+			for (ObScriptCommand* iter = PIRConsole.obscriptcmd; iter->opcode < (kObScript_NumObScriptCommands + kObScript_ScriptOpBase); ++iter) {
 				if (iter) {
 					uintptr_t exeaddr = (uintptr_t) & (iter->execute);
 					uint64_t* funcptr = (uint64_t*)(exeaddr);
@@ -459,17 +330,17 @@ extern "C"
 		static bool Toggle_SlowZoomAndRotate()
 		{
 			// its on, turn it off
-			if (ZoomFinder && RotateFinder && ZoomAddress && RotateAddress && PIRSettings.SLOW_ENABLED) {
-				SafeWriteBuf(ZoomAddress, &fOriginalZOOM, sizeof(Float32));
-				SafeWriteBuf(RotateAddress, &fOriginalROTATE, sizeof(Float32));
+			if (Zoom.finder && Rotate.finder && Zoom.addr && Rotate.addr && PIRSettings.SLOW_ENABLED) {
+				SafeWriteBuf(Zoom.addr, &PIRSettings.fOriginalZOOM, sizeof(Float32));
+				SafeWriteBuf(Rotate.addr, &PIRSettings.fOriginalROTATE, sizeof(Float32));
 				PIRSettings.SLOW_ENABLED = false;
 				pir::ConsolePrint("Slow zoom and rotate disabled");
 				return true;
 			}
 			// its off, turn it on
-			if (ZoomFinder && RotateFinder && ZoomAddress && RotateAddress && !PIRSettings.SLOW_ENABLED) {
-				SafeWriteBuf(ZoomAddress, &fSlowerZOOM, sizeof(Float32));
-				SafeWriteBuf(RotateAddress, &fSlowerROTATE, sizeof(Float32));
+			if (Zoom.finder && Rotate.finder && Zoom.addr && Rotate.addr && !PIRSettings.SLOW_ENABLED) {
+				SafeWriteBuf(Zoom.addr, &PIRSettings.fSlowerZOOM, sizeof(Float32));
+				SafeWriteBuf(Rotate.addr, &PIRSettings.fSlowerROTATE, sizeof(Float32));
 				PIRSettings.SLOW_ENABLED = true;
 				pir::ConsolePrint("Slow zoom and rotate enabled");
 				return true;
@@ -480,21 +351,21 @@ extern "C"
 		//toggle infinite workshop size
 		static bool Toggle_WorkshopSize()
 		{
-			if (WSSIZE && PIRSettings.WORKSHOPSIZE_ENABLED) {
-				SafeWriteBuf((uintptr_t)WSSIZE, WSDRAWS_OLD, sizeof(WSDRAWS_OLD));
-				SafeWriteBuf((uintptr_t)WSSIZE + 0x0A, WSTRIS_OLD, sizeof(WSTRIS_OLD));
+			if (WSSize.finder && PIRSettings.WORKSHOPSIZE_ENABLED) {
+				SafeWriteBuf((uintptr_t)WSSize.finder, Patches.WSDRAWS_OLD, sizeof(Patches.WSDRAWS_OLD));
+				SafeWriteBuf((uintptr_t)WSSize.finder + 0x0A, Patches.WSTRIS_OLD, sizeof(Patches.WSTRIS_OLD));
 				PIRSettings.WORKSHOPSIZE_ENABLED = false;
 				pir::ConsolePrint("Unlimited workshop size disabled");
 				return true;
 			}
 
-			if (WSSIZE && PIRSettings.WORKSHOPSIZE_ENABLED == false) {
+			if (WSSize.finder && PIRSettings.WORKSHOPSIZE_ENABLED == false) {
 				// Write nop 6 so its never increased
-				SafeWriteBuf((uintptr_t)WSSIZE, NOP6, sizeof(NOP6));
-				SafeWriteBuf((uintptr_t)WSSIZE + 0x0A, NOP6, sizeof(NOP6));
+				SafeWriteBuf((uintptr_t)WSSize.finder, Patches.NOP6, sizeof(Patches.NOP6));
+				SafeWriteBuf((uintptr_t)WSSize.finder + 0x0A, Patches.NOP6, sizeof(Patches.NOP6));
 
 				// set current ws draws and triangles to zero
-				SafeWrite64(uintptr_t(WSSIZE) + (uintptr_t)WSSIZE_REL32 + 0x06, 0x0000000000000000);
+				SafeWrite64(uintptr_t(WSSize.finder) + (uintptr_t)WSSize.r32 + 0x06, 0x0000000000000000);
 				PIRSettings.WORKSHOPSIZE_ENABLED = true;
 				pir::ConsolePrint("Unlimited workshop size enabled");
 				return true;
@@ -526,13 +397,13 @@ extern "C"
 		static bool Toggle_ObjectSnap()
 		{
 			if (OBJECTSNAP && PIRSettings.OBJECTSNAP_ENABLED) {
-				SafeWrite64((uintptr_t)OBJECTSNAP, OSNAP_NEW);
+				SafeWrite64((uintptr_t)OBJECTSNAP, Patches.OSNAP_NEW);
 				PIRSettings.OBJECTSNAP_ENABLED = false;
 				pir::ConsolePrint("Object snap disabled");
 				return true;
 			}
 			if (OBJECTSNAP && !PIRSettings.OBJECTSNAP_ENABLED) {
-				SafeWriteBuf((uintptr_t)OBJECTSNAP, OSNAP_OLD, sizeof(OSNAP_OLD));
+				SafeWriteBuf((uintptr_t)OBJECTSNAP, Patches.OSNAP_OLD, sizeof(Patches.OSNAP_OLD));
 				PIRSettings.OBJECTSNAP_ENABLED = true;
 				pir::ConsolePrint("Object snap enabled");
 				return true;
@@ -545,14 +416,14 @@ extern "C"
 		{
 			// its on - toggle it off
 			if (AchievementsFinder && PIRSettings.ACHIEVEMENTS_ENABLED) {
-				SafeWriteBuf((uintptr_t)AchievementsFinder, Achieve_OLD, sizeof(Achieve_OLD));
+				SafeWriteBuf((uintptr_t)AchievementsFinder, Patches.Achieve_OLD, sizeof(Patches.Achieve_OLD));
 				PIRSettings.ACHIEVEMENTS_ENABLED = false;
 				pir::ConsolePrint("Achievements with mods disabled (game default)");
 				return true;
 			}
 			// its off - toggle it on
 			if (AchievementsFinder && !PIRSettings.ACHIEVEMENTS_ENABLED) {
-				SafeWriteBuf((uintptr_t)AchievementsFinder, Achieve_NEW, sizeof(Achieve_NEW));
+				SafeWriteBuf((uintptr_t)AchievementsFinder, Patches.Achieve_NEW, sizeof(Patches.Achieve_NEW));
 				PIRSettings.ACHIEVEMENTS_ENABLED = true;
 				pir::ConsolePrint("Achievements with mods enabled!");
 				return true;
@@ -564,19 +435,19 @@ extern "C"
 		static bool Toggle_ConsoleRefName()
 		{
 			// its on - toggle it off
-			if (ConsoleRefFuncFinder && ConsoleRefCallFinder && PIRSettings.ConsoleNameRef_ENABLED)
+			if (ConsoleNameRef.funcfinder && ConsoleNameRef.callfinder && PIRSettings.ConsoleNameRef_ENABLED)
 			{
-				SafeWriteBuf(uintptr_t(ConsoleRefCallFinder), CONSOLEREF_OLD, sizeof(CONSOLEREF_OLD));
+				SafeWriteBuf(uintptr_t(ConsoleNameRef.callfinder), ConsoleNameRef.oldbytes, sizeof(ConsoleNameRef.oldbytes));
 				PIRSettings.ConsoleNameRef_ENABLED = false;
 				pir::ConsolePrint("ConsoleRefName toggled off!");
 				return true;
 			}
 
 			// its off - toggle it on
-			if (ConsoleRefFuncFinder && ConsoleRefCallFinder && !PIRSettings.ConsoleNameRef_ENABLED)
+			if (ConsoleNameRef.funcfinder && ConsoleNameRef.callfinder && !PIRSettings.ConsoleNameRef_ENABLED)
 			{
-				SafeWriteCall(uintptr_t(ConsoleRefCallFinder), ConsoleRefFuncAddress); //patch call
-				SafeWrite8(uintptr_t(ConsoleRefCallFinder) + 0x05, 0x90); //for a clean patch
+				SafeWriteCall(uintptr_t(ConsoleNameRef.callfinder), ConsoleNameRef.addr); //patch call
+				SafeWrite8(uintptr_t(ConsoleNameRef.callfinder) + 0x05, 0x90); //for a clean patch
 				PIRSettings.ConsoleNameRef_ENABLED = true;
 				pir::ConsolePrint("ConsoleRefName toggled on!");
 				return true;
@@ -591,17 +462,18 @@ extern "C"
 				SafeWrite8((uintptr_t)CHANGE_A + 0x06, 0x01);
 				SafeWrite8((uintptr_t)CHANGE_A + 0x0C, 0x02);
 				SafeWrite8((uintptr_t)CHANGE_B + 0x01, 0x01);
-				SafeWriteBuf((uintptr_t)CHANGE_C, CHANGE_C_OLD, sizeof(CHANGE_C_OLD));
-				SafeWrite8((uintptr_t)CHANGE_C + 0x1D, 0x01); // added june 2024 to test potential improvement
-				SafeWriteBuf((uintptr_t)CHANGE_D, CHANGE_D_OLD, sizeof(CHANGE_D_OLD));
+				SafeWriteBuf((uintptr_t)CHANGE_C, Patches.C_OLD, sizeof(Patches.C_OLD));
+				SafeWrite8((uintptr_t)CHANGE_C + 0x1D, 0x01);
+				SafeWriteBuf((uintptr_t)CHANGE_D, Patches.D_OLD, sizeof(Patches.D_OLD));
 				SafeWrite8((uintptr_t)CHANGE_E + 0x00, 0x76);
-				SafeWriteBuf((uintptr_t)CHANGE_F, CHANGE_F_OLD, sizeof(CHANGE_F_OLD));
+				SafeWriteBuf((uintptr_t)CHANGE_F, Patches.F_OLD, sizeof(Patches.F_OLD));
 				SafeWrite8((uintptr_t)CHANGE_G + 0x01, 0x95);
 				SafeWrite8((uintptr_t)CHANGE_H + 0x00, 0x74);
-				SafeWriteBuf((uintptr_t)CHANGE_I, CHANGE_I_OLD, sizeof(CHANGE_I_OLD));
+				SafeWriteBuf((uintptr_t)CHANGE_I, Patches.I_OLD, sizeof(Patches.I_OLD));
 				SafeWrite8((uintptr_t)RED + 0xC, 0x01);
-				SafeWriteBuf((uintptr_t)YELLOW, YELLOW_OLD, sizeof(YELLOW_OLD));
-				SafeWriteBuf((uintptr_t)WSTIMER, WSTIMER_OLD, sizeof(WSTIMER_OLD));
+				SafeWriteBuf((uintptr_t)REDCALL, Patches.REDCALL_OLD, sizeof(Patches.REDCALL_OLD));
+				SafeWriteBuf((uintptr_t)YELLOW, Patches.YELLOW_OLD, sizeof(Patches.YELLOW_OLD));
+				SafeWriteBuf((uintptr_t)WSTIMER, Patches.WSTIMER_OLD, sizeof(Patches.WSTIMER_OLD));
 				PIRSettings.PLACEINRED_ENABLED = false;
 				pir::ConsolePrint("Place In Red disabled.");
 				return true;
@@ -611,17 +483,18 @@ extern "C"
 				SafeWrite8((uintptr_t)CHANGE_A + 0x06, 0x00);
 				SafeWrite8((uintptr_t)CHANGE_A + 0x0C, 0x01);
 				SafeWrite8((uintptr_t)CHANGE_B + 0x01, 0x00);
-				SafeWriteBuf((uintptr_t)CHANGE_C, CHANGE_C_NEW, sizeof(CHANGE_C_NEW));
-				SafeWrite8((uintptr_t)CHANGE_C + 0x1D, 0x00); // added june 2024 to test potential improvement
-				SafeWriteBuf((uintptr_t)CHANGE_D, CHANGE_D_NEW, sizeof(CHANGE_D_NEW));
+				SafeWriteBuf((uintptr_t)CHANGE_C, Patches.C_NEW, sizeof(Patches.C_NEW));
+				SafeWrite8((uintptr_t)CHANGE_C + 0x1D, 0x00);
+				SafeWriteBuf((uintptr_t)CHANGE_D, Patches.D_NEW, sizeof(Patches.D_NEW));
 				SafeWrite8((uintptr_t)CHANGE_E + 0x00, 0xEB);
-				SafeWriteBuf((uintptr_t)CHANGE_F, NOP6, sizeof(NOP6));
+				SafeWriteBuf((uintptr_t)CHANGE_F, Patches.NOP6, sizeof(Patches.NOP6));
 				SafeWrite8((uintptr_t)CHANGE_G + 0x01, 0x98); // works but look at again later
 				SafeWrite8((uintptr_t)CHANGE_H + 0x00, 0xEB);
-				SafeWriteBuf((uintptr_t)CHANGE_I, CHANGE_I_NEW, sizeof(CHANGE_I_NEW));
+				SafeWriteBuf((uintptr_t)CHANGE_I, Patches.I_NEW, sizeof(Patches.I_NEW));
 				SafeWrite8((uintptr_t)RED + 0x0C, 0x00);
-				SafeWriteBuf((uintptr_t)YELLOW, YELLOW_NEW, sizeof(YELLOW_NEW));
-				SafeWriteBuf((uintptr_t)WSTIMER, WSTIMER_NEW, sizeof(WSTIMER_NEW));
+				SafeWriteBuf((uintptr_t)REDCALL, Patches.NOP5, sizeof(Patches.NOP5)); // improve performance by not calling it
+				SafeWriteBuf((uintptr_t)YELLOW, Patches.NOP3, sizeof(Patches.NOP3));
+				SafeWriteBuf((uintptr_t)WSTIMER, Patches.WSTIMER_NEW, sizeof(Patches.WSTIMER_NEW));
 				PIRSettings.PLACEINRED_ENABLED = true;
 				pir::ConsolePrint("Place In Red enabled.");
 				return true;
@@ -675,11 +548,11 @@ extern "C"
 		static bool ExecuteConsoleCommand(void* paramInfo, void* scriptData, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, double* result, void* opcodeOffsetPtr)
 		{
 			PIR_LOG_PREP
-				if (GetConsoleArg && ConsoleArgFinder && (ConsoleArgRel32 != 0)) {
+				if (PIRConsole.GetConsoleArg && PIRConsole.ConsoleArgFinder && (PIRConsole.ConsoleArgRel32 != 0)) {
 
 					char param1[4096];
 					char param2[4096];
-					bool consoleresult = GetConsoleArg(paramInfo, scriptData, opcodeOffsetPtr, thisObj, containingObj, scriptObj, locals, &param1, &param2);
+					bool consoleresult = PIRConsole.GetConsoleArg(paramInfo, scriptData, opcodeOffsetPtr, thisObj, containingObj, scriptObj, locals, &param1, &param2);
 
 					if (consoleresult && param1[0]) {
 						switch (ConsoleSwitch(param1)) {
@@ -747,17 +620,20 @@ extern "C"
 		}
 
 		//attempt to create the console command
-		static bool CreateConsoleCommand()
+		static bool CreateConsoleCommand(const char* hijacked_cmd_fullname)
 		{
-			if (FirstConsole == nullptr) {
+			PIR_LOG_PREP
+			pirlog.FormattedMessage("[%s] Creating console command.", thisfunc);
+
+			if (PIRConsole.consolecmd == nullptr) {
 				return false;
 			}
 
-			static const char* s_CommandToBorrow = "GameComment"; // the command we will replace (full name)
-			static ObScriptCommand* s_hijackedCommand = nullptr;
-			static ObScriptParam* s_hijackedCommandParams = nullptr;
+			const char* s_CommandToBorrow = hijacked_cmd_fullname;
+			ObScriptCommand* s_hijackedCommand = nullptr;
+			ObScriptParam* s_hijackedCommandParams = nullptr;
 
-			for (ObScriptCommand* iter = FirstConsole; iter->opcode < (kObScript_NumConsoleCommands + kObScript_ConsoleOpBase); ++iter) {
+			for (ObScriptCommand* iter = PIRConsole.consolecmd; iter->opcode < (kObScript_NumConsoleCommands + kObScript_ConsoleOpBase); ++iter) {
 				if (!strcmp(iter->longName, s_CommandToBorrow)) {
 					s_hijackedCommand = iter;
 					s_hijackedCommandParams = iter->params;
@@ -794,17 +670,18 @@ extern "C"
 		//did we find all the required memory patterns?
 		static bool FoundRequiredMemoryPatterns()
 		{
-			if (ConsoleArgFinder && FirstConsoleFinder && FirstObScriptFinder && SetScaleFinder && GetScaleFinder && CurrentWSRefFinder
-				&& WSModeFinder && GConsoleFinder && CHANGE_A && CHANGE_B && CHANGE_C && CHANGE_D && CHANGE_E && CHANGE_F && CHANGE_G && CHANGE_H && CHANGE_I
-				&& YELLOW && RED && WSTIMER && GROUNDSNAP && OBJECTSNAP && OUTLINES && WSSIZE && ZoomFinder && RotateFinder && SetMotionTypeFinder)
+			PIR_LOG_PREP
+			if (PIRConsole.ConsoleArgFinder && PIRConsole.consolefinder && PIRConsole.obscriptfinder && ScaleFuncs.setFinder && ScaleFuncs.getFinder && CurrentWSRef.finder
+				&& WSMode.finder && gConsole.finder && CHANGE_A && CHANGE_B && CHANGE_C && CHANGE_D && CHANGE_E && CHANGE_F && CHANGE_G && CHANGE_H && CHANGE_I
+				&& YELLOW && RED && WSTIMER && GROUNDSNAP && OBJECTSNAP && OUTLINES && WSSize.finder && Zoom.finder && Rotate.finder && SetMotionType.finder)
 			{
 				// allow plugin to load even if these arent found
 				// AchievementsFinder, ConsoleRefCallFinder
 				// GDataHandlerFinder not using yet
 
 				return true;
-			}
-			else {
+			} else {
+				pirlog.FormattedMessage("[%s] Plugin load failed! Couldnt find required memory patterns. Check for conflicting mods.", thisfunc);
 				return false;
 			}
 		}
@@ -815,14 +692,14 @@ extern "C"
 			pirlog.FormattedMessage("--------------------------------------------------------------------");
 			pirlog.FormattedMessage("Base                  : %p", RelocationManager::s_baseAddr);
 			pirlog.FormattedMessage("AchievementsFinder    : %p", AchievementsFinder);
-			pirlog.FormattedMessage("ZoomFinder            : %p", ZoomFinder);
-			pirlog.FormattedMessage("RotateFinder          : %p", RotateFinder);
-			pirlog.FormattedMessage("ZoomAddress           : %p | orig %f | slow %f", ZoomAddress, fOriginalZOOM, fSlowerZOOM);
-			pirlog.FormattedMessage("RotateAddress         : %p | orig %f | slow %f", RotateAddress, fOriginalROTATE, fSlowerROTATE);
+			pirlog.FormattedMessage("ZoomFinder            : %p", Zoom.finder);
+			pirlog.FormattedMessage("RotateFinder          : %p", Rotate.finder);
+			pirlog.FormattedMessage("ZoomAddress           : %p | orig %f | slow %f", Zoom.addr, PIRSettings.fOriginalZOOM, PIRSettings.fSlowerZOOM);
+			pirlog.FormattedMessage("RotateAddress         : %p | orig %f | slow %f", Rotate.addr, PIRSettings.fOriginalROTATE, PIRSettings.fSlowerROTATE);
 			pirlog.FormattedMessage("CHANGE_A              : %p", CHANGE_A);
 			pirlog.FormattedMessage("CHANGE_B              : %p", CHANGE_B);
-			pirlog.FormattedMessage("CHANGE_C              : %p | original bytes: %02X%02X%02X%02X%02X%02X%02X", CHANGE_C, CHANGE_C_OLD[0], CHANGE_C_OLD[1], CHANGE_C_OLD[2], CHANGE_C_OLD[3], CHANGE_C_OLD[4], CHANGE_C_OLD[5], CHANGE_C_OLD[6]);
-			pirlog.FormattedMessage("CHANGE_D              : %p | original bytes: %02X%02X%02X%02X%02X%02X%02X", CHANGE_D, CHANGE_D_OLD[0], CHANGE_D_OLD[1], CHANGE_D_OLD[2], CHANGE_D_OLD[3], CHANGE_D_OLD[4], CHANGE_D_OLD[5], CHANGE_D_OLD[6]);
+			pirlog.FormattedMessage("CHANGE_C              : %p | original bytes: %02X%02X%02X%02X%02X%02X%02X", CHANGE_C, Patches.C_OLD[0], Patches.C_OLD[1], Patches.C_OLD[2], Patches.C_OLD[3], Patches.C_OLD[4], Patches.C_OLD[5], Patches.C_OLD[6]);
+			pirlog.FormattedMessage("CHANGE_D              : %p | original bytes: %02X%02X%02X%02X%02X%02X%02X", CHANGE_D, Patches.D_OLD[0], Patches.D_OLD[1], Patches.D_OLD[2], Patches.D_OLD[3], Patches.D_OLD[4], Patches.D_OLD[5], Patches.D_OLD[6]);
 			pirlog.FormattedMessage("CHANGE_E              : %p", CHANGE_E);
 			pirlog.FormattedMessage("CHANGE_F              : %p", CHANGE_F);
 			pirlog.FormattedMessage("CHANGE_G              : %p", CHANGE_G);
@@ -832,24 +709,24 @@ extern "C"
 			pirlog.FormattedMessage("OUTLINES              : %p", OUTLINES);
 			pirlog.FormattedMessage("YELLOW                : %p", YELLOW);
 			pirlog.FormattedMessage("RED                   : %p", RED);
+			pirlog.FormattedMessage("REDCALL               : %p", REDCALL);
 			pirlog.FormattedMessage("WSTIMER               : %p", WSTIMER);
-			pirlog.FormattedMessage("WSSIZE                : %p", uintptr_t(WSSIZE) + (static_cast<uintptr_t>(WSSIZE_REL32) + 6));
-			pirlog.FormattedMessage("OBJECTSNAP            : %p | original bytes: %02X%02X%02X%02X%02X%02X%02X%02X", OBJECTSNAP, OSNAP_OLD[0], OSNAP_OLD[1], OSNAP_OLD[2], OSNAP_OLD[3], OSNAP_OLD[4], OSNAP_OLD[5], OSNAP_OLD[6], OSNAP_OLD[7]);
-			pirlog.FormattedMessage("WSDRAWS_OLD           : %p | original bytes: %02X%02X%02X%02X%02X%02X", WSSIZE, WSDRAWS_OLD[0], WSDRAWS_OLD[1], WSDRAWS_OLD[2], WSDRAWS_OLD[3], WSDRAWS_OLD[4], WSDRAWS_OLD[5]);
-			pirlog.FormattedMessage("WSTRIS_OLD            : %p | original bytes: %02X%02X%02X%02X%02X%02X", WSSIZE + 0x0A, WSTRIS_OLD[0], WSTRIS_OLD[1], WSTRIS_OLD[2], WSTRIS_OLD[3], WSTRIS_OLD[4], WSTRIS_OLD[5]);
-			pirlog.FormattedMessage("ConsoleRefCallFinder  : %p", ConsoleRefCallFinder);
-			pirlog.FormattedMessage("ConsoleRefFuncFinder  : %p", ConsoleRefFuncFinder);
-			pirlog.FormattedMessage("ConsoleRefFuncAddress : %p | rel32: 0x%08X", ConsoleRefFuncAddress, static_cast<uintptr_t>(ConsoleRefFuncRel32));
-			pirlog.FormattedMessage("WSModeFinder          : %p | rel32: 0x%08X | %p", WSModeFinder, WSModeFinderRel32, WSModeBoolAddress);
-			pirlog.FormattedMessage("FirstConsoleFinder    : %p | rel32: 0x%08X", FirstConsoleFinder, FirstConsoleRel32);
-			pirlog.FormattedMessage("FirstObScriptFinder   : %p | rel32: 0x%08X", FirstObScriptFinder, FirstObScriptRel32);
-			pirlog.FormattedMessage("GConsoleFinder        : %p | rel32: 0x%08X | %p", GConsoleFinder, GConsoleRel32, GConsoleStatic);
-			pirlog.FormattedMessage("GDataHandlerFinder    : %p | rel32: 0x%08X | %p", GDataHandlerFinder, GDataHandlerRel32, GDataHandlerStatic);
-			pirlog.FormattedMessage("ConsoleArgFinder      : %p | rel32: 0x%08X", ConsoleArgFinder, ConsoleArgRel32);
-			pirlog.FormattedMessage("CurrentWSRefFinder    : %p | rel32: 0x%08X | %p", CurrentWSRefFinder, CurrentRefBaseRel32, CurrentRefBase);
-			pirlog.FormattedMessage("SetScaleFinder        : %p | rel32: 0x%08X", SetScaleFinder, SetScaleRel32);
-			pirlog.FormattedMessage("GetScaleFinder        : %p | rel32: 0x%08X", GetScaleFinder, GetScaleRel32);
-			pirlog.FormattedMessage("SetMotionTypeFinder   : %p", SetMotionTypeFinder);
+			pirlog.FormattedMessage("WSSizeAdd             : %p", WSSize.finder);
+			pirlog.FormattedMessage("WSSizeValues          : %p", WSSize.addr);
+			pirlog.FormattedMessage("OBJECTSNAP            : %p", OBJECTSNAP);
+			pirlog.FormattedMessage("ConsoleRefCallFinder  : %p", ConsoleNameRef.callfinder);
+			pirlog.FormattedMessage("ConsoleRefFuncFinder  : %p", ConsoleNameRef.funcfinder);
+			pirlog.FormattedMessage("ConsoleRefFuncAddress : %p | rel32: 0x%08X", ConsoleNameRef.addr, (uintptr_t)ConsoleNameRef.funcfinderR32);
+			pirlog.FormattedMessage("WSModeFinder          : %p | rel32: 0x%08X | %p", WSMode.finder, WSMode.r32, WSMode.addr);
+			pirlog.FormattedMessage("FirstConsoleFinder    : %p | rel32: 0x%08X", PIRConsole.consolefinder, PIRConsole.consolecmd_r32);
+			pirlog.FormattedMessage("FirstObScriptFinder   : %p | rel32: 0x%08X", PIRConsole.obscriptfinder, PIRConsole.obscriptcmd_r32);
+			pirlog.FormattedMessage("GConsoleFinder        : %p | rel32: 0x%08X | %p", gConsole.finder, gConsole.r32, gConsole.addr);
+			pirlog.FormattedMessage("GDataHandlerFinder    : %p | rel32: 0x%08X | %p", gDataHandler.finder, gDataHandler.r32, gDataHandler.addr);
+			pirlog.FormattedMessage("ConsoleArgFinder      : %p | rel32: 0x%08X", PIRConsole.ConsoleArgFinder, PIRConsole.ConsoleArgRel32);
+			pirlog.FormattedMessage("CurrentWSRefFinder    : %p | rel32: 0x%08X | %p", CurrentWSRef.finder, CurrentWSRef.r32, CurrentWSRef.addr);
+			pirlog.FormattedMessage("setFinder             : %p | rel32: 0x%08X", ScaleFuncs.setFinder, ScaleFuncs.setR32);
+			pirlog.FormattedMessage("getFinder             : %p | rel32: 0x%08X", ScaleFuncs.getFinder, ScaleFuncs.getR32);
+			pirlog.FormattedMessage("SetMotionType.finder  : %p", SetMotionType.finder);
 			pirlog.FormattedMessage("--------------------------------------------------------------------");
 		}
 
@@ -958,15 +835,15 @@ extern "C"
 		static void Init_PlaceInRed()
 		{
 			// search for memory patterns
-			ConsoleArgFinder = Utility::pattern("4C 89 4C 24 20 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57").count(1).get(0).get<uintptr_t>();
-			SetMotionTypeFinder = Utility::pattern("48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 83 EC 50 45 32 E4 41 8D 41 FF").count(1).get(0).get<uintptr_t>();
-			FirstConsoleFinder = Utility::pattern("48 8D 1D ? ? ? ? 48 8D 35 ? ? ? ? 66 90 48 8B 53 F8").count(1).get(0).get<uintptr_t>();
-			FirstObScriptFinder = Utility::pattern("48 8D 1D ? ? ? ? 4C 8D 35 ? ? ? ? 0F 1F 40 00 0F 1F 84 00 00 00 00 00").count(1).get(0).get<uintptr_t>();
-			GConsoleFinder = Utility::pattern("48 8D 05 ? ? ? ? 48 89 2D ? ? ? ? 48 89 05 ? ? ? ? 89 2D ? ? ? ? 40 88 2D ? ? ? ? 48").count(1).get(0).get<uintptr_t>(); // for console print
-			SetScaleFinder = Utility::pattern("E8 ? ? ? ? 40 84 F6 75 07 81 63 10 FF FF DF FF 33 ED").count(1).get(0).get<uintptr_t>(); //setscale
-			GetScaleFinder = Utility::pattern("66 89 BB 08 01 00 00 E8 ? ? ? ? 48 8B 0D ? ? ? ? 0F 28 F0 48").count(1).get(0).get<uintptr_t>(); //getscale
-			CurrentWSRefFinder = Utility::pattern("48 8B 1D ? ? ? ? 4C 8D 24 C3 49 3B DC 0F 84 ? ? ? ? 66").count(1).get(0).get<uintptr_t>(); //has address leading to current WS ref
-			WSModeFinder = Utility::pattern("80 3D ? ? ? ? 00 74 0E C6 07 02 48 8B 5C 24 30 48 83 C4 20 5F C3").count(1).get(0).get<uintptr_t>(); //is player in ws mode
+			PIRConsole.ConsoleArgFinder = Utility::pattern("4C 89 4C 24 20 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57").count(1).get(0).get<uintptr_t>();
+			SetMotionType.finder = Utility::pattern("48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 83 EC 50 45 32 E4 41 8D 41 FF").count(1).get(0).get<uintptr_t>();
+			PIRConsole.consolefinder = Utility::pattern("48 8D 1D ? ? ? ? 48 8D 35 ? ? ? ? 66 90 48 8B 53 F8").count(1).get(0).get<uintptr_t>();
+			PIRConsole.obscriptfinder = Utility::pattern("48 8D 1D ? ? ? ? 4C 8D 35 ? ? ? ? 0F 1F 40 00 0F 1F 84 00 00 00 00 00").count(1).get(0).get<uintptr_t>();
+			gConsole.finder = Utility::pattern("48 8D 05 ? ? ? ? 48 89 2D ? ? ? ? 48 89 05 ? ? ? ? 89 2D ? ? ? ? 40 88 2D ? ? ? ? 48").count(1).get(0).get<uintptr_t>(); // for console print
+			ScaleFuncs.setFinder = Utility::pattern("E8 ? ? ? ? 40 84 F6 75 07 81 63 10 FF FF DF FF 33 ED").count(1).get(0).get<uintptr_t>(); //setscale
+			ScaleFuncs.getFinder = Utility::pattern("66 89 BB 08 01 00 00 E8 ? ? ? ? 48 8B 0D ? ? ? ? 0F 28 F0 48").count(1).get(0).get<uintptr_t>(); //getscale
+			CurrentWSRef.finder = Utility::pattern("48 8B 1D ? ? ? ? 4C 8D 24 C3 49 3B DC 0F 84 ? ? ? ? 66").count(1).get(0).get<uintptr_t>(); //has address leading to current WS ref
+			WSMode.finder = Utility::pattern("80 3D ? ? ? ? 00 74 0E C6 07 02 48 8B 5C 24 30 48 83 C4 20 5F C3").count(1).get(0).get<uintptr_t>(); //is player in ws mode
 			CHANGE_A = Utility::pattern("C6 05 ? ? ? ? 01 84 C0 75 A9 B1 02").count(1).get(0).get<uintptr_t>();
 			CHANGE_B = Utility::pattern("B2 01 88 15 ? ? ? ? EB 04 84 D2 74 07").count(1).get(0).get<uintptr_t>();
 			CHANGE_C = Utility::pattern("0F B6 05 ? ? ? ? 44 0F B6 A5 ? ? ? ? 84 C0 75").count(1).get(0).get<uintptr_t>();
@@ -978,98 +855,103 @@ extern "C"
 			CHANGE_I = Utility::pattern("74 35 48 8B B5 ? ? ? ? 48 8B CE E8 ? ? ? ? 84 C0 75").count(1).get(0).get<uintptr_t>(); // ignore water restrictions
 			YELLOW = Utility::pattern("8B 58 14 48 8D 4C 24 30 8B D3 45 33 C0 E8").count(1).get(0).get<uintptr_t>(); // allow moving yellow objects
 			RED = Utility::pattern("89 05 ? ? ? ? C6 05 ? ? ? ? 01 48 83 C4 68 C3").count(1).get(0).get<uintptr_t>(); //keep objects green
+			REDCALL = Utility::pattern("E8 ? ? ? ? 83 3D ? ? ? ? 00 0F 87 ? ? ? ? 48 8B 03 48 8B CB FF 90 ? ? ? ? 48").count(1).get(0).get<uintptr_t>(); //keep objects green
+			
 			WSTIMER = Utility::pattern("0F 85 AB 00 00 00 F3 0F 10 05 ? ? ? ? 41 0F 2E C3 75 66 F3 0F 10 05 ? ? ? ? F3 0F 11 05 ? ? ? ? C6").count(1).get(0).get<uintptr_t>(); // New ws timer check is buried in here
 			OBJECTSNAP = Utility::pattern("F3 0F 10 35 ? ? ? ? 0F 28 C6 48 ? ? ? ? ? ? 33 C0").count(1).get(0).get<uintptr_t>();
 			GROUNDSNAP = Utility::pattern("0F 86 ? ? ? ? 41 8B 4E 34 49 B8").count(1).get(0).get<uintptr_t>();
-			WSSIZE = Utility::pattern("01 05 ? ? ? ? 8B 44 24 58 01 05 ? ? ? ? 85 D2 0F 84").count(1).get(0).get<uintptr_t>(); // where the game adds to the ws size
+			WSSize.finder = Utility::pattern("01 05 ? ? ? ? 8B 44 24 58 01 05 ? ? ? ? 85 D2 0F 84").count(1).get(0).get<uintptr_t>(); // where the game adds to the ws size
 			OUTLINES = Utility::pattern("C6 05 ? ? ? ? 01 88 15 ? ? ? ? 76 13 48 8B 05").count(1).get(0).get<uintptr_t>(); // object outlines not instant
-			ZoomFinder = Utility::pattern("F3 0F 10 0D ? ? ? ? 0F 29 74 24 20 F3 0F 10 35").count(1).get(0).get<uintptr_t>();
-			RotateFinder = Utility::pattern("F3 0F 10 05 ? ? ? ? ? ? ? ? ? ? ? ? 84 C9 75 07 0F 57 05").count(1).get(0).get<uintptr_t>(); //better compatibility with high physics fps
+			Zoom.finder = Utility::pattern("F3 0F 10 0D ? ? ? ? 0F 29 74 24 20 F3 0F 10 35").count(1).get(0).get<uintptr_t>();
+			Rotate.finder = Utility::pattern("F3 0F 10 05 ? ? ? ? ? ? ? ? ? ? ? ? 84 C9 75 07 0F 57 05").count(1).get(0).get<uintptr_t>(); //better compatibility with high physics fps
 			AchievementsFinder = Utility::pattern("48 83 EC 28 C6 44 24 ? 00 84 D2 74 1C 48").count(1).get(0).get<uintptr_t>();
-			ConsoleRefFuncFinder = Utility::pattern("E8 ? ? ? ? 4C 8B 05 ? ? ? ? 48 8D 4C 24 40 4C 8B C8 BA 00 01 00 00 E8 ? ? ? ? 83").count(1).get(0).get<uintptr_t>(); //consolenamefix credit registrator2000
-			ConsoleRefCallFinder = Utility::pattern("FF 90 D0 01 00 00 48 89 74 24 40 4C 8D 05 ? ? ? ? 4C").count(1).get(0).get<uintptr_t>(); //consolenamefix credit registrator2000
-			GDataHandlerFinder = Utility::pattern("48 83 3D ? ? ? ? 00 4D 8B F1 41 0F B6 F0 48 8B FA 48 8B D9 0F 84 ? ? ? ? 80 3D ? ? ? ? 00 48").count(1).get(0).get<uintptr_t>();
+			ConsoleNameRef.funcfinder = Utility::pattern("E8 ? ? ? ? 4C 8B 05 ? ? ? ? 48 8D 4C 24 40 4C 8B C8 BA 00 01 00 00 E8 ? ? ? ? 83").count(1).get(0).get<uintptr_t>(); //consolenamefix credit registrator2000
+			ConsoleNameRef.callfinder = Utility::pattern("FF 90 D0 01 00 00 48 89 74 24 40 4C 8D 05 ? ? ? ? 4C").count(1).get(0).get<uintptr_t>(); //consolenamefix credit registrator2000
+			gDataHandler.finder = Utility::pattern("48 83 3D ? ? ? ? 00 4D 8B F1 41 0F B6 F0 48 8B FA 48 8B D9 0F 84 ? ? ? ? 80 3D ? ? ? ? 00 48").count(1).get(0).get<uintptr_t>();
 
 			// store old bytes
-			if (CHANGE_C) { ReadMemory((uintptr_t(CHANGE_C)), &CHANGE_C_OLD, 0x07); }
-			if (CHANGE_D) { ReadMemory((uintptr_t(CHANGE_D)), &CHANGE_D_OLD, 0x07); }
-			if (CHANGE_F) { ReadMemory((uintptr_t(CHANGE_F)), &CHANGE_F_OLD, 0x06); }
-			if (OBJECTSNAP) { ReadMemory((uintptr_t(OBJECTSNAP)), &OSNAP_OLD, 0x08); }
+			if (CHANGE_C){ReadMemory((uintptr_t(CHANGE_C)), &Patches.C_OLD, 0x07); }
+			if (CHANGE_D){ReadMemory((uintptr_t(CHANGE_D)), &Patches.D_OLD, 0x07); }
+			if (CHANGE_F){ReadMemory((uintptr_t(CHANGE_F)), &Patches.F_OLD, 0x06); }
+			if (REDCALL) {ReadMemory((uintptr_t(REDCALL)), &Patches.REDCALL_OLD, 0x05); }
+			if (OBJECTSNAP) {ReadMemory((uintptr_t(OBJECTSNAP)), &Patches.OSNAP_OLD, 0x08); }
 
-			if (WSSIZE) {
-				ReadMemory((uintptr_t(WSSIZE) + 0x00), &WSDRAWS_OLD, 0x06);
-				ReadMemory((uintptr_t(WSSIZE) + 0x0A), &WSTRIS_OLD, 0x06);
-				ReadMemory((uintptr_t(WSSIZE) + 0x02), &WSSIZE_REL32, sizeof(SInt32));
+			if (WSSize.finder) {
+				
+				ReadMemory((uintptr_t(WSSize.finder) + 0x00), &Patches.WSDRAWS_OLD, 0x06); //draws
+				ReadMemory((uintptr_t(WSSize.finder) + 0x0A), &Patches.WSTRIS_OLD, 0x06); //triangles
+				WSSize.r32 = GetRel32FromPattern(WSSize.finder, 0x02, 0x06, 0x00); // rel32 of draws
+				WSSize.addr = RelocationManager::s_baseAddr + (uintptr_t)WSSize.r32;
 			}
 
-			if (ZoomFinder && RotateFinder) {
-				ZoomRel32 = GetRel32FromPattern(ZoomFinder, 0x04, 0x08, 0x00);
-				RotateRel32 = GetRel32FromPattern(RotateFinder, 0x04, 0x08, 0x00);
-				ZoomAddress = RelocationManager::s_baseAddr + (uintptr_t)ZoomRel32;
-				RotateAddress = RelocationManager::s_baseAddr + (uintptr_t)RotateRel32;
-				ReadMemory(RotateAddress, &fOriginalROTATE, sizeof(Float32));
-				ReadMemory(ZoomAddress, &fOriginalZOOM, sizeof(Float32));
+			if (Zoom.finder && Rotate.finder) {
+				Zoom.r32 = GetRel32FromPattern(Zoom.finder, 0x04, 0x08, 0x00);
+				Rotate.r32 = GetRel32FromPattern(Rotate.finder, 0x04, 0x08, 0x00);
+				Zoom.addr = RelocationManager::s_baseAddr + (uintptr_t)Zoom.r32;
+				Rotate.addr = RelocationManager::s_baseAddr + (uintptr_t)Rotate.r32;
+				ReadMemory(Rotate.addr, &PIRSettings.fOriginalROTATE, sizeof(Float32));
+				ReadMemory(Zoom.addr, &PIRSettings.fOriginalZOOM, sizeof(Float32));
 			}
 
-			if (ConsoleRefCallFinder && ConsoleRefFuncFinder) {
-				ConsoleRefFuncRel32 = GetRel32FromPattern(ConsoleRefFuncFinder, 0x01, 0x05, 0x00); //rel32 of the good function
-				ConsoleRefFuncAddress = RelocationManager::s_baseAddr + (uintptr_t)ConsoleRefFuncRel32; // calculate the full address
+			if (ConsoleNameRef.callfinder && ConsoleNameRef.funcfinder) {
+				ConsoleNameRef.funcfinderR32 = GetRel32FromPattern(ConsoleNameRef.funcfinder, 0x01, 0x05, 0x00); //rel32 of the good function
+				ConsoleNameRef.addr = RelocationManager::s_baseAddr + (uintptr_t)ConsoleNameRef.funcfinderR32; // calculate the full address
 			}
 
-			if (WSModeFinder) {
-				WSModeFinderRel32 = GetRel32FromPattern(WSModeFinder, 0x02, 0x07, 0x00);
-				WSModeBoolAddress = RelocationManager::s_baseAddr + WSModeFinderRel32;
+			if (WSMode.finder) {
+				WSMode.r32 = GetRel32FromPattern(WSMode.finder, 0x02, 0x07, 0x00);
+				WSMode.addr = RelocationManager::s_baseAddr + WSMode.r32;
 			}
 
-			if (SetScaleFinder) {
-				SetScaleRel32 = GetRel32FromPattern(SetScaleFinder, 0x01, 0x05, 0x00);
-				RelocAddr <_SetScale> GimmeSetScale(SetScaleRel32);
-				SetScale = GimmeSetScale;
+			if (ScaleFuncs.setFinder) {
+				ScaleFuncs.setR32 = GetRel32FromPattern(ScaleFuncs.setFinder, 0x01, 0x05, 0x00);
+				RelocAddr <_SetScale> GimmeSetScale(ScaleFuncs.setR32);
+				ScaleFuncs.SetScale = GimmeSetScale;
 			}
 
-			if (GetScaleFinder) {
-				GetScaleRel32 = GetRel32FromPattern(GetScaleFinder, 0x08, 0x0C, 0x00);
-				RelocAddr <_GetScale> GimmeGetScale(GetScaleRel32);
-				GetScale = GimmeGetScale;
+			if (ScaleFuncs.getFinder) {
+				ScaleFuncs.getR32 = GetRel32FromPattern(ScaleFuncs.getFinder, 0x08, 0x0C, 0x00);
+				RelocAddr <_GetScale> GimmeGetScale(ScaleFuncs.getR32);
+				ScaleFuncs.GetScale = GimmeGetScale;
 			}
 
-			if (GConsoleFinder) {
-				GConsoleRel32 = GetRel32FromPattern(GConsoleFinder, 0x03, 0x07, 0x00);
-				GConsoleStatic = RelocationManager::s_baseAddr + (uintptr_t)GConsoleRel32;
+			if (gConsole.finder) {
+				gConsole.r32 = GetRel32FromPattern(gConsole.finder, 0x03, 0x07, 0x00);
+				gConsole.addr = RelocationManager::s_baseAddr + (uintptr_t)gConsole.r32;
 			}
 
-			if (GDataHandlerFinder) {
-				GDataHandlerRel32 = GetRel32FromPattern(GDataHandlerFinder, 0x03, 0x08, 0x00);
-				GDataHandlerStatic = RelocationManager::s_baseAddr + (uintptr_t)GDataHandlerRel32;
+			if (gDataHandler.finder) {
+				gDataHandler.r32 = GetRel32FromPattern(gDataHandler.finder, 0x03, 0x08, 0x00);
+				gDataHandler.addr = RelocationManager::s_baseAddr + (uintptr_t)gDataHandler.r32;
 			}
 
-			if (CurrentWSRefFinder) {
-				CurrentRefBaseRel32 = GetRel32FromPattern(CurrentWSRefFinder, 0x03, 0x07, 0x00);
-				CurrentRefBase = RelocationManager::s_baseAddr + (uintptr_t)CurrentRefBaseRel32;
+			if (CurrentWSRef.finder) {
+				CurrentWSRef.r32 = GetRel32FromPattern(CurrentWSRef.finder, 0x03, 0x07, 0x00);
+				CurrentWSRef.addr = RelocationManager::s_baseAddr + (uintptr_t)CurrentWSRef.r32;
 			}
 
-			if (ConsoleArgFinder) {
-				ConsoleArgRel32 = uintptr_t(ConsoleArgFinder) - RelocationManager::s_baseAddr;
-				RelocAddr <_GetConsoleArg> GetDatArg(ConsoleArgRel32);
-				GetConsoleArg = GetDatArg;
+			if (PIRConsole.ConsoleArgFinder) {
+				PIRConsole.ConsoleArgRel32 = uintptr_t(PIRConsole.ConsoleArgFinder) - RelocationManager::s_baseAddr;
+				RelocAddr <_GetConsoleArg> GetDatArg(PIRConsole.ConsoleArgRel32);
+				PIRConsole.GetConsoleArg = GetDatArg;
 			}
 
-			if (FirstConsoleFinder) {
-				FirstConsoleRel32 = GetRel32FromPattern(FirstConsoleFinder, 0x03, 0x07, -0x08);
-				RelocPtr <ObScriptCommand> _FirstConsoleCommand(FirstConsoleRel32);
-				FirstConsole = _FirstConsoleCommand;
+			if (PIRConsole.consolefinder) {
+				PIRConsole.consolecmd_r32 = GetRel32FromPattern(PIRConsole.consolefinder, 0x03, 0x07, -0x08);
+				RelocPtr <ObScriptCommand> _FirstConsoleCommand(PIRConsole.consolecmd_r32);
+				PIRConsole.consolecmd = _FirstConsoleCommand;
 			}
 
-			if (FirstObScriptFinder) {
-				FirstObScriptRel32 = GetRel32FromPattern(FirstObScriptFinder, 0x03, 0x07, -0x08);
-				RelocPtr <ObScriptCommand> _FirstObScriptCommand(FirstObScriptRel32);
-				FirstObScript = _FirstObScriptCommand;
+			if (PIRConsole.obscriptfinder) {
+				PIRConsole.obscriptcmd_r32 = GetRel32FromPattern(PIRConsole.obscriptfinder, 0x03, 0x07, -0x08);
+				RelocPtr <ObScriptCommand> _FirstObScriptCommand(PIRConsole.obscriptcmd_r32);
+				PIRConsole.obscriptcmd = _FirstObScriptCommand;
 			}
 
-			if (SetMotionTypeFinder) {
-				SetMotionTypeRel32 = uintptr_t(SetMotionTypeFinder) - RelocationManager::s_baseAddr;
-				RelocAddr <_SetMotionType_Native> GimmeSetMotionType(SetMotionTypeRel32);
-				SetMotionType_Native = GimmeSetMotionType;
+			if (SetMotionType.finder) {
+				SetMotionType.r32 = uintptr_t(SetMotionType.finder) - RelocationManager::s_baseAddr;
+				RelocAddr <_SetMotionType_Native> GimmeSetMotionType(SetMotionType.r32);
+				SetMotionType.func = GimmeSetMotionType;
 			}
 		}
 	}
@@ -1089,29 +971,24 @@ extern "C"
 
 		pir::Init_PlaceInRed();
 
-		// check memory patterns
-		if (!pir::FoundRequiredMemoryPatterns())
-		{
+		if (!pir::FoundRequiredMemoryPatterns()){
 			pir::LogMemoryPatterns();
-			pirlog.FormattedMessage("[%s] Plugin load failed! Couldnt find required memory patterns. Check for conflicting mods.", thisfunc);
 			return false;
 		}
-
-
-
-		// attempt to create the console command
-		pirlog.FormattedMessage("[%s] Creating console command.", thisfunc);
-		if (!pir::CreateConsoleCommand()) {
-			pirlog.FormattedMessage("[%s] Failed to create console command! Another mod may be conflicting.", thisfunc);
+		
+		if (!pir::CreateConsoleCommand("GameComment"))
+		{
+			pirlog.FormattedMessage("[%s] Failed to create console command! Plugin will run with defaults.", thisfunc);
 		}
 
 		// toggle defaults
-		pirlog.FormattedMessage("[%s] Setting options from PlaceInRed.ini", thisfunc);
+		pirlog.FormattedMessage("[%s] Toggling ini defaults.", thisfunc);
 		pir::ReadINIDefaults();
 
 		// plugin loaded
 		pirlog.FormattedMessage("[%s] Plugin load finished!", thisfunc);
 		pir::LogMemoryPatterns();
+				
 		return true;
 	}
 
