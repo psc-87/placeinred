@@ -72,7 +72,10 @@
       <FavorSizeOrSpeed Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Speed</FavorSizeOrSpeed>
     </ClCompile>
     <ClCompile Include="pattern.cpp" />
-    <Text Include="test.cpp" />
+    <Text Include="test.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</DeploymentContent>
+    </Text>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="f4se.h" />

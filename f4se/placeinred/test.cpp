@@ -4,40 +4,7 @@ most of this is from the F4SE clipboard mod
 some of it my own stuff
 */
 
-
-
-#include <shlobj.h>
-#include "f4se_common/f4se_version.h"
-#include "f4se_common/Relocation.h"
-#include "f4se_common/SafeWrite.h"
-#include "f4se_common/Utilities.h"
-#include "f4se/PapyrusArgs.h"
-#include "f4se/PapyrusVM.h"
-#include "f4se/PapyrusValue.h"
-#include "f4se/PapyrusNativeFunctions.h"
-#include "f4se/PapyrusStruct.h"
-#include "f4se/PapyrusDelayFunctors.h"
-#include "f4se/PapyrusObjectReference.h"
-#include "f4se/PapyrusEvents.h"
-#include "f4se/PluginManager.h"
-#include "f4se/GameForms.h"
-#include "f4se/GameTypes.h"
-#include "f4se/PapyrusUtilities.h"
-#include "f4se/GameAPI.h"
-#include "F4SE/GameMenus.h"
-#include "f4se/GameData.h"
-#include "F4SE/GameEvents.h"
-#include "f4se/GameReferences.h"
-#include "f4se/GameObjects.h"
-#include "f4se/GameExtraData.h"
-#include "f4se/GameThreads.h"
-#include "f4se/GameRTTI.h"
-#include "f4se/GameCamera.h"
-#include "f4se/GameInput.h"
-#include "f4se/GameWorkshop.h"
-#include "f4se/NiObjects.h"
-#include "f4se/NiNodes.h"
-#include "f4se/NiExtraData.h"
+#include "main.h"
 #include <map>
 #include <set>
 #include <math.h>
@@ -54,12 +21,15 @@ some of it my own stuff
 #include <cctype>
 #include <sstream>
 #include <windows.h>
-#define VERSION_TO_STRING(a) std::to_string(GET_EXE_VERSION_MAJOR(a)) + "." + std::to_string(GET_EXE_VERSION_MINOR(a)) + "." + std::to_string(GET_EXE_VERSION_BUILD(a)) + (GET_EXE_VERSION_SUB(a) > 0 ? "." + GET_EXE_VERSION_SUB(a) : "");
 
+/*
+ModAngle
 
-/* ModAngle
-* 
-* typedef void  (*_ModAngleXYZ)           (TESObjectREFR* objRef, float scale);
+//ModAngleXFinder = Utility::pattern("40 53 48 83 EC 30 0F 29 74 24 20 48 8B D9 0F 28 F1 0F 2E B1 C0 00 00 00").count(1).get(0).get<uintptr_t>();
+//ModAngleYFinder = Utility::pattern("40 53 48 83 EC 30 0F 29 74 24 20 48 8B D9 0F 28 F1 0F 2E B1 C4 00 00 00").count(1).get(0).get<uintptr_t>();
+//ModAngleZFinder = Utility::pattern("40 53 48 83 EC 30 0F 29 74 24 20 48 8B D9 0F 28 F1 0F 2E B1 C8 00 00 00").count(1).get(0).get<uintptr_t>();
+
+typedef void (*_ModAngleXYZ) (TESObjectREFR* objRef, float scale);
 static _ModAngleXYZ ModAngleX = nullptr;
 static _ModAngleXYZ ModAngleY = nullptr;
 static _ModAngleXYZ ModAngleZ = nullptr;
@@ -68,15 +38,8 @@ static uintptr_t* ModAngleYFinder = nullptr;
 static uintptr_t* ModAngleZFinder = nullptr;
 static SInt32 ModAngleXRel32 = 0;
 static SInt32 ModAngleYRel32 = 0;
-static SInt32 ModAngleZRel32 = 0;*/
+static SInt32 ModAngleZRel32 = 0;
 
-//ModAngleXFinder = Utility::pattern("40 53 48 83 EC 30 0F 29 74 24 20 48 8B D9 0F 28 F1 0F 2E B1 C0 00 00 00").count(1).get(0).get<uintptr_t>();
-//ModAngleYFinder = Utility::pattern("40 53 48 83 EC 30 0F 29 74 24 20 48 8B D9 0F 28 F1 0F 2E B1 C4 00 00 00").count(1).get(0).get<uintptr_t>();
-//ModAngleZFinder = Utility::pattern("40 53 48 83 EC 30 0F 29 74 24 20 48 8B D9 0F 28 F1 0F 2E B1 C8 00 00 00").count(1).get(0).get<uintptr_t>();
-//SUCSMFinder = Utility::pattern("F3 0F 11 05 ? ? ? ? E8 ? ? ? ? F3 0F 10 44 24 50 48 8D 0D ? ? ? ? F3 0F 11 05 ? ? ? ? E8 ? ? ? ? B0 01").count(1).get(0).get<uintptr_t>();
-// 
-// Modify angle of current ref
-/* works but not really useful
 static bool ModCurrentRefAngle(char axis, float fModify)
 {
 	PIR_LOG_PREP
@@ -103,21 +66,7 @@ static bool ModCurrentRefAngle(char axis, float fModify)
 	return false;
 }
 
-	// papyrus setup during plugin load
 
-	//g_papyrus = (F4SEPapyrusInterface*)f4seinterface->QueryInterface(kInterface_Papyrus);
-	//if (!g_papyrus)
-	//{
-		//pirlog.FormattedMessage("[%s] Plugin load failed! Failed to set papyrus interface.", thisfunc);
-		//return false;
-	//}
-	// register papyrus functions
-	//pirlog.FormattedMessage("[%s] Registering papyrus functions...", thisfunc);
-	//g_papyrus->Register(pir::RegisterFuncs);
-
-
-
-/*
 if (ModAngleXFinder && ModAngleYFinder && ModAngleZFinder) {
 	ModAngleXRel32 = uintptr_t(ModAngleXFinder) - RelocationManager::s_baseAddr;
 	ModAngleYRel32 = uintptr_t(ModAngleYFinder) - RelocationManager::s_baseAddr;
@@ -129,38 +78,50 @@ if (ModAngleXFinder && ModAngleYFinder && ModAngleZFinder) {
 	ModAngleY = GimmeModAngleY;
 	ModAngleZ = GimmeModAngleZ;
 }
+
+
 */
-/*sucsm
-static uintptr_t* SUCSMFinder = nullptr;
-static SInt32 SUCSMSpeedRel32 = 0;
-static SInt32 SUCSMLookRel32 = 0;*/
-/*if (SUCSMFinder) {
-	SUCSMSpeedRel32 = GetRel32FromPattern(SUCSMFinder, 0x04, 0x08, 0x00);
-	SUCSMLookRel32 = SUCSMSpeedRel32 + 0x00000018;
-}*/
+
+
+//SUCSMFinder = Utility::pattern("F3 0F 11 05 ? ? ? ? E8 ? ? ? ? F3 0F 10 44 24 50 48 8D 0D ? ? ? ? F3 0F 11 05 ? ? ? ? E8 ? ? ? ? B0 01").count(1).get(0).get<uintptr_t>();
+
+// papyrus setup during plugin load
+
+//g_papyrus = (F4SEPapyrusInterface*)f4seinterface->QueryInterface(kInterface_Papyrus);
+//if (!g_papyrus)
+//{
+	//pirlog.FormattedMessage("[%s] Plugin load failed! Failed to set papyrus interface.", thisfunc);
+	//return false;
+//}
+// register papyrus functions
+//pirlog.FormattedMessage("[%s] Registering papyrus functions...", thisfunc);
+//g_papyrus->Register(pir::RegisterFuncs);
 
 
 /*
-* g_player
+sucsm
+
+static uintptr_t* SUCSMFinder = nullptr;
+static SInt32 SUCSMSpeedRel32 = 0;
+static SInt32 SUCSMLookRel32 = 0;
+
+if (SUCSMFinder) {
+	SUCSMSpeedRel32 = GetRel32FromPattern(SUCSMFinder, 0x04, 0x08, 0x00);
+	SUCSMLookRel32 = SUCSMSpeedRel32 + 0x00000018;
+}
+*/
+
+/*
+g_player
+
 Fallout4.exe+27A270 - 48 8B 05 290ADC02     - mov rax,[Fallout4.exe+303ACA0] { (20F59141350) }
-Fallout4.exe+27A277 - F6 80 000E0000 10     - test byte ptr [rax+00000E00],10 { 16 }
+Fallout4.exe+27A277 - F6 80 000E0000 10     - test byte finder [rax+00000E00],10 { 16 }
 Fallout4.exe+27A27E - 0F85 F8000000         - jne Fallout4.exe+27A37C
 Fallout4.exe+27A284 - 48 8B 46 18           - mov rax,[rsi+18]
 Fallout4.exe+27A288 - 49 8B DE              - mov rbx,r14
 Fallout4.exe+27A28B - 8B 48 10              - mov ecx,[rax+10]
 Fallout4.exe+27A28E - 8B 05 74F79E02        - mov eax,[Fallout4.exe+2C69A08] { (47) }
 Fallout4.exe+27A294 - 44 8D 51 02           - lea r10d,[rcx+02]
-
-
-
-
-*/
-
-
-/*
-
-
-
 */
 
 
@@ -218,12 +179,15 @@ RelocAddr<_EffectShaderStop> EffectShaderStop(0x00F0DF40);
 
 RelocPtr<void*> qword_145907F18(0x05907F18);
 
+/*
 DECLARE_STRUCT(SelectionDetails, "ClipboardExtension");
 DECLARE_STRUCT(PatternObjectEntry, "ClipboardExtension");
 DECLARE_STRUCT(PatternWireEntry, "ClipboardExtension");
 DECLARE_STRUCT(PatternGeneralEntry, "ClipboardExtension");
 DECLARE_STRUCT(PatternReferenceEntry, "ClipboardExtension");
 DECLARE_STRUCT(ComponentEntry, "ClipboardExtension");
+*/
+
 
 // trim from start (in place)
 static inline void ltrim(std::string& s)
