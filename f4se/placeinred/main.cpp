@@ -62,14 +62,16 @@ extern "C" {
 		  "pir toggle       (pir 1) toggle place in red\n"
 		  "pir osnap        (pir 2) toggle object snapping\n"
 		  "pir gsnap        (pir 3) toggle ground snapping\n"
-		  "pir slow         (pir 4) toggle slower object rotation and zoom speed\n"
+		  "pir slow         (pir 4) toggle slower rotation/zoom speed\n"
 		  "pir workshopsize (pir 5) toggle unlimited workshop build size\n"
 		  "pir outlines     (pir 6) toggle object outlines\n"
 		  "pir achievements (pir 7) toggle achievement with mods\n"
-		  "pir scaleup1     (and 2, 5, 10, 25, 50, 100) scale up percent\n"
-		  "pir scaledown1   (and 2, 5, 10, 25, 50, 75) scale down percent\n"
+		  "pir scaleup1     (or 2,5,10,25,50,and 100) scale up percent\n"
+		  "pir scaledown1   (or 2,5,10,25,50,and 75) scale down percent\n"
 		  "pir lock         (pir l) lock object in place (motiontype keyframed)\n"
 		  "pir unlock       (pir u) unlock object (motiontype dynamic)"
+		  "pir cnref        toggle consolenameref"
+		  "pir print        toggle place in red printing console messages"
 		};
 
 
@@ -758,7 +760,7 @@ extern "C" {
 		static bool CreateConsoleCMD(const char* hijacked_cmd_fullname)
 		{
 			PIR_LOG_PREP
-			pirlog.FormattedMessage("[%s] Creating console command.", thisfunc);
+			pirlog.FormattedMessage("[%s] Patching command '%s'.", thisfunc, hijacked_cmd_fullname);
 
 			if (FirstConsole.cmd == nullptr) {
 				return false;
@@ -827,7 +829,7 @@ extern "C" {
 		//log all the memory patterns to the log file
 		static void LogMemoryPatterns()
 		{
-			pirlog.FormattedMessage("----------------------------------------------------------------------------");
+			pirlog.FormattedMessage("-------------------------------------------------------------------------------");
 			pirlog.FormattedMessage("Base           :%p", RelocationManager::s_baseAddr);
 			pirlog.FormattedMessage("achievements   :%p", Pointers.achievements);
 			pirlog.FormattedMessage("A              :%p", Pointers.A);
@@ -860,14 +862,14 @@ extern "C" {
 			pirlog.FormattedMessage("WSSize|Floats  :%p|%p", WSSize.func, WSSize.addr);
 			pirlog.FormattedMessage("Rotate         :%p|%p|orig %f|slow %f", Rotate.func, Rotate.addr, settings.fOriginalROTATE, settings.fSlowerROTATE);
 			pirlog.FormattedMessage("Zoom           :%p|%p|orig %f|slow %f", Zoom.func, Zoom.addr, settings.fOriginalZOOM, settings.fSlowerZOOM);
-			pirlog.FormattedMessage("----------------------------------------------------------------------------");
+			pirlog.FormattedMessage("-------------------------------------------------------------------------------");
 		}
 
 		//read the ini and toggle default settings
 		static void ReadINIDefaults()
 		{
 			PIR_LOG_PREP
-			pirlog.FormattedMessage("[%s] Reading and toggling default options.", thisfunc);
+			pirlog.FormattedMessage("[%s] Reading and setting ini defaults.", thisfunc);
 
 			// store the setting as a string
 			std::string SETTING01 = GetPIRConfigOption("Main", "PLACEINRED_ENABLED");
@@ -930,14 +932,16 @@ extern "C" {
 		{
 			PIR_LOG_PREP
 			// get a plugin handle
+			pirlog.FormattedMessage("[%s] Getting plugin handle.", thisfunc);
 			pirPluginHandle = f4se->GetPluginHandle();
 			if (!pirPluginHandle) {
 				pirlog.FormattedMessage("[%s] Couldn't get a plugin handle!", thisfunc);
 				return false;
 			}
-			pirlog.FormattedMessage("[%s] Got a plugin handle.", thisfunc);
+			
 
 			// messaging interface
+			pirlog.FormattedMessage("[%s] Setting messaging interface.", thisfunc);
 			g_messaging = (F4SEMessagingInterface*)f4se->QueryInterface(kInterface_Messaging);
 			if (!g_messaging) {
 				pirlog.FormattedMessage("[%s] Failed to set messaging interface!", thisfunc);
@@ -945,6 +949,7 @@ extern "C" {
 			}
 
 			// object interface
+			pirlog.FormattedMessage("[%s] Setting object interface.", thisfunc);
 			g_object = (F4SEObjectInterface*)f4se->QueryInterface(kInterface_Object);
 			if (!g_object) {
 				pirlog.FormattedMessage("[%s] Failed to set object interface!", thisfunc);
@@ -952,12 +957,12 @@ extern "C" {
 			}
 
 			// message interface
+			pirlog.FormattedMessage("[%s] Registering message listener.", thisfunc);
 			if (g_messaging->RegisterListener(pirPluginHandle, "F4SE", pir::MessageInterfaceHandler) == false) {
 				pirlog.FormattedMessage("[%s] Failed to register message listener!", thisfunc);
 				return false;
 			}
 
-			pirlog.FormattedMessage("[%s] F4SE interfaces are set.", thisfunc);
 			return true;
 
 		}
@@ -1119,9 +1124,10 @@ extern "C" {
 		// start log
 		PIR_LOG_PREP
 		pirlog.OpenRelative(CSIDL_MYDOCUMENTS, pluginLogFile);
-		pirlog.FormattedMessage("[%s] Plugin loaded.", thisfunc);
+		pirlog.FormattedMessage("[%s] Starting up!", thisfunc);
 
 		if (!pir::InitF4SE(f4se)){
+			pirlog.FormattedMessage("[%s] F4SE init failed! The plugin will not load.", thisfunc);
 			return false;
 		}
 
@@ -1168,7 +1174,4 @@ extern "C" {
 
 
 }//end of extern c
-
-
-// stuff thats not extern c
 
