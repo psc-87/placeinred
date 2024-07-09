@@ -8,7 +8,7 @@
 #define PIR_LOG_PREP const char* thisfunc = __func__;
 
 // f4se plugin
-static UInt32 pluginVersion = 9;
+static UInt32 pluginVersion = 10;
 static const char* pluginLogFile = { "\\My Games\\Fallout4\\F4SE\\PlaceInRed.log" };
 static std::string pluginINI = "Data\\F4SE\\Plugins\\PlaceInRed.ini";
 static IDebugLog pirlog;
@@ -120,7 +120,7 @@ struct SimpleFinder
 	uintptr_t* func = nullptr; // pointer to a pattern match
 	SInt32 r32 = 0; // rel32 of what were finding
 	uintptr_t addr = 0; // final address
-	ObScriptCommand* cmd; // for first console commands
+	ObScriptCommand* cmd = nullptr; // for first console commands
 };
 // Scale functions
 struct _ScaleFuncs

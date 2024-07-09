@@ -179,13 +179,28 @@ extern "C" {
 		{
 			if (WSMode.func) {
 				UInt8 WSMODE = 0x00;
-				ReadMemory(uintptr_t(WSMode.addr), &WSMODE, sizeof(bool));
+				ReadMemory(uintptr_t(WSMode.addr), &WSMODE, sizeof(UInt8));
 				if (WSMODE == 0x01) {
 					return true;
 				}
 			}
 			return false;
 		}
+
+		// Is the player 'grabbing' the current workshop ref or just highlighting it
+		// Checked so we can skip applying the scale jitter fix when possible. Grabbed items dont have the jitter issue.
+		static bool IsWSRefGrabbed()
+		{
+			if (WSMode.func) {
+				UInt8 WSMODE_GRABBED = 0x00;
+				ReadMemory(uintptr_t(WSMode.addr) + 0xB, &WSMODE_GRABBED, sizeof(UInt8));
+				if (WSMODE_GRABBED == 0x01) {
+					return true;
+				}
+			}
+			return false;
+		}
+
 
 		// return the currently selected workshop ref with some safety checks
 		static TESObjectREFR* GetCurrentWSRef(bool refonly=1)
@@ -363,7 +378,12 @@ extern "C" {
 				if (newScale > 9.9999f) { newScale = 9.9999f; }
 				if (newScale < 0.0001f) { newScale = 0.0001f; }
 				ScaleFuncs.SetScale(ref, newScale);
-				pir::MoveRefToSelf(0, 0, 0, 1); //repeat once to fix jitter
+
+				// fix jitter only if player isnt grabbing the item
+				if (IsWSRefGrabbed() == false) {
+                    pir::MoveRefToSelf(0, 0, 0, 1);
+				}
+				
 				return true;
 			}
 			return false;
@@ -653,6 +673,7 @@ extern "C" {
 			}
 		}
 
+		// play sound by filename. must be under data>sounds>
 		static void PlayFileSound(const char* wav)
 		{
 			if (PlaySounds.File_func) {
@@ -660,6 +681,7 @@ extern "C" {
 			}
 		}
 
+		// play UI sound using form name
 		static void PlayUISound(const char* sound)
 		{
 			if (PlaySounds.UI_func) {
