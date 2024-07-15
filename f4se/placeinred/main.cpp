@@ -35,7 +35,6 @@ namespace pir {
 
 extern "C" {
 	namespace pir {
-
 		static _SETTINGS    settings;
 		static _PATCHES     Patches;
 		static _POINTERS    Pointers;
@@ -59,7 +58,7 @@ extern "C" {
 		static const char* ConsoleHelpMSG =
 		{
 		  "PlaceInRed (pir) usage:\n"
-		  "pir toggle       (pir 1) toggle place in red\n"
+		  "pir toggle       (pir 1) toggle place in R\n"
 		  "pir osnap        (pir 2) toggle object snapping\n"
 		  "pir gsnap        (pir 3) toggle ground snapping\n"
 		  "pir slow         (pir 4) toggle slower object rotation and zoom speed\n"
@@ -73,23 +72,23 @@ extern "C" {
 		};
 
 
-
 		// string to float
-		static Float32 FloatFromString(std::string fString, Float32 min = 0.001, Float32 max = 999.999, Float32 error=0)
+		static Float32 FloatFromString(std::string fString, Float32 min = 0.001, Float32 max = 999.999, Float32 error = 0)
 		{
 			Float32 theFloat = 0;
 			try
 			{
-			    theFloat = std::stof(fString);
+				theFloat = std::stof(fString);
 			}
 			catch (...)
 			{
-			    return error;
+				return error;
 			}
 			if (theFloat > min && theFloat < max) {
-			    return theFloat;
-			} else {
-			    return error;
+				return theFloat;
+			}
+			else {
+				return error;
 			}
 		}
 
@@ -114,10 +113,15 @@ extern "C" {
 		}
 
 		// Simple function to read memory (credit reg2k).
-		static bool ReadMemory(uintptr_t addr, void* data, size_t len) {
+		static bool ReadMemory(uintptr_t addr, void* data, size_t len)
+		{
 			UInt32 oldProtect;
+			// Change memory protection to allow read/write/execute access
 			if (VirtualProtect((void*)addr, len, PAGE_EXECUTE_READWRITE, &oldProtect)) {
+				// Copy memory to buffer
 				memcpy(data, (void*)addr, len);
+
+				// Restore the original memory protection
 				if (VirtualProtect((void*)addr, len, oldProtect, &oldProtect)) {
 					return true;
 				}
@@ -188,7 +192,6 @@ extern "C" {
 		}
 
 		// Is the player 'grabbing' the current workshop ref or just highlighting it
-		// Checked so we can skip applying the scale jitter fix when possible. Grabbed items dont have the jitter issue.
 		static bool IsWSRefGrabbed()
 		{
 			if (WSMode.func) {
@@ -202,8 +205,18 @@ extern "C" {
 		}
 
 
+		// force correct bytes (0000 and 0101) to check locations
+		static void SetCorrectBytes()
+		{
+			if (WSMode.func) {
+				SafeWriteBuf(uintptr_t(WSMode.addr) + 0x03, Patches.TWO_ZEROS, sizeof(Patches.TWO_ZEROS)); // 00 00
+				SafeWriteBuf(uintptr_t(WSMode.addr) + 0x09, Patches.TWO_ONES, sizeof(Patches.TWO_ONES)); // 01 01
+			}
+		}
+
+
 		// return the currently selected workshop ref with some safety checks
-		static TESObjectREFR* GetCurrentWSRef(bool refonly=1)
+		static TESObjectREFR* GetCurrentWSRef(bool refonly = 1)
 		{
 			PIR_LOG_PREP
 			if (CurrentWSRef.func && CurrentWSRef.addr && pir::InWorkshopMode()) {
@@ -229,10 +242,8 @@ extern "C" {
 		}
 
 		// lock the current WS ref in place by changing the motion type to keyframed
-		static void LockOrUnlockCurrentWSRef(bool unlock = 0, bool sound = 0)
+		static void LockUnlockWSRef(bool unlock = 0, bool sound = 0)
 		{
-			
-
 			VirtualMachine* vm = (*g_gameVM)->m_virtualMachine;
 			TESObjectREFR* ref = GetCurrentWSRef();
 			UInt32 motion = 00000002; //Motion_Keyframed
@@ -319,11 +330,12 @@ extern "C" {
 		{
 			switch (msg->type) {
 
-			    case F4SEMessagingInterface::kMessage_GameDataReady: 
-					settings.GameDataIsReady = true; 
-					break;
+			case F4SEMessagingInterface::kMessage_GameDataReady:
+				settings.GameDataIsReady = true;
+				break;
 
-			    default: break;
+			default: 
+				break;
 			}
 		}
 
@@ -371,7 +383,7 @@ extern "C" {
 		static bool ModCurrentRefScale(float fMultiplyAmount)
 		{
 			PIR_LOG_PREP
-			TESObjectREFR* ref = GetCurrentWSRef();
+				TESObjectREFR* ref = GetCurrentWSRef();
 			if (ref) {
 				float oldscale = ScaleFuncs.GetScale(ref);
 				float newScale = oldscale * (fMultiplyAmount);
@@ -381,9 +393,9 @@ extern "C" {
 
 				// fix jitter only if player isnt grabbing the item
 				if (IsWSRefGrabbed() == false) {
-                    pir::MoveRefToSelf(0, 0, 0, 1);
+					pir::MoveRefToSelf(0, 0, 0, 1);
 				}
-				
+
 				return true;
 			}
 			return false;
@@ -394,9 +406,9 @@ extern "C" {
 		{
 			PIR_LOG_PREP
 
-			if (FirstConsole.cmd == nullptr || FirstObScript.cmd == nullptr) {
-				return false;
-			}
+				if (FirstConsole.cmd == nullptr || FirstObScript.cmd == nullptr) {
+					return false;
+				}
 
 			pirlog.FormattedMessage("---------------------------------------------------------");
 			pirlog.FormattedMessage("Type|opcode|rel32|address|short|long|params|needsparent|helptext");
@@ -520,12 +532,14 @@ extern "C" {
 		//toggle objectsnap
 		static bool Toggle_ObjectSnap()
 		{
+			// its on - toggle it off
 			if (Pointers.osnap && settings.OBJECTSNAP_ENABLED) {
 				SafeWriteBuf((uintptr_t)Pointers.osnap, Patches.OSNAP_NEW, sizeof(Patches.OSNAP_NEW));
 				settings.OBJECTSNAP_ENABLED = false;
 				pir::ConsolePrint("Object snap disabled");
 				return true;
 			}
+			// its off - toggle it on
 			if (Pointers.osnap && !settings.OBJECTSNAP_ENABLED) {
 				SafeWriteBuf((uintptr_t)Pointers.osnap, Patches.OSNAP_OLD, sizeof(Patches.OSNAP_OLD));
 				settings.OBJECTSNAP_ENABLED = true;
@@ -587,12 +601,13 @@ extern "C" {
 		//toggle placing objects in red
 		static bool Toggle_PlaceInRed()
 		{
+			// toggle off
 			if (settings.PLACEINRED_ENABLED) {
 				SafeWrite8((uintptr_t)Pointers.A + 0x06, 0x01);
 				SafeWrite8((uintptr_t)Pointers.A + 0x0C, 0x02);
 				SafeWrite8((uintptr_t)Pointers.B + 0x01, 0x01);
 				SafeWriteBuf((uintptr_t)Pointers.C, Patches.C_OLD, sizeof(Patches.C_OLD));
-				SafeWriteBuf((uintptr_t)Pointers.C + 0x11, Patches.K_OLD, sizeof(Patches.K_OLD)); // testing
+				SafeWriteBuf((uintptr_t)Pointers.C + 0x11, Patches.CC_OLD, sizeof(Patches.CC_OLD));
 				SafeWrite8((uintptr_t)Pointers.C + 0x1D, 0x01);
 				SafeWriteBuf((uintptr_t)Pointers.D, Patches.D_OLD, sizeof(Patches.D_OLD));
 				SafeWrite8((uintptr_t)Pointers.E + 0x00, 0x76);
@@ -600,30 +615,32 @@ extern "C" {
 				SafeWrite8((uintptr_t)Pointers.G + 0x01, 0x95);
 				SafeWrite8((uintptr_t)Pointers.H + 0x00, 0x74);
 				SafeWriteBuf((uintptr_t)Pointers.J, Patches.J_OLD, sizeof(Patches.J_OLD));
-				SafeWrite8((uintptr_t)Pointers.red + 0xC, 0x01);
-				SafeWriteBuf((uintptr_t)Pointers.yellow, Patches.Y_OLD, sizeof(Patches.Y_OLD));
-				SafeWriteBuf((uintptr_t)Pointers.wstimer, Patches.TIMER_OLD, sizeof(Patches.TIMER_OLD));
+				SafeWrite8((uintptr_t)Pointers.R + 0xC, 0x01); //red
+				SafeWriteBuf((uintptr_t)Pointers.Y, Patches.Y_OLD, sizeof(Patches.Y_OLD)); 
+				SafeWriteBuf((uintptr_t)Pointers.wstimer, Patches.TIMER_OLD, sizeof(Patches.TIMER_OLD)); 
 				settings.PLACEINRED_ENABLED = false;
 				pir::ConsolePrint("Place in Red disabled.");
 				return true;
 			}
 
+			// toggle on
 			if (!settings.PLACEINRED_ENABLED) {
 				SafeWrite8((uintptr_t)Pointers.A + 0x06, 0x00);
 				SafeWrite8((uintptr_t)Pointers.A + 0x0C, 0x01);
 				SafeWrite8((uintptr_t)Pointers.B + 0x01, 0x00);
-				SafeWriteBuf((uintptr_t)Pointers.C, Patches.C_NEW, sizeof(Patches.C_NEW));
-				SafeWriteBuf((uintptr_t)Pointers.C + 0x11, Patches.K_NEW, sizeof(Patches.K_NEW)); // testing
+				SafeWriteBuf((uintptr_t)Pointers.C, Patches.C_NEW, sizeof(Patches.C_NEW)); // movzx eax,byte ptr [Fallout4.exe+2E74998]
+				SafeWriteBuf((uintptr_t)Pointers.C + 0x11, Patches.CC_NEW, sizeof(Patches.CC_NEW));
 				SafeWrite8((uintptr_t)Pointers.C + 0x1D, 0x00);
 				SafeWriteBuf((uintptr_t)Pointers.D, Patches.D_NEW, sizeof(Patches.D_NEW));
 				SafeWrite8((uintptr_t)Pointers.E + 0x00, 0xEB);
-				SafeWriteBuf((uintptr_t)Pointers.F, Patches.NOP6, sizeof(Patches.NOP6));
+				SafeWriteBuf((uintptr_t)Pointers.F, Patches.NOP6, sizeof(Patches.NOP6)); // mov [Fallout4.exe+2E74999],al
 				SafeWrite8((uintptr_t)Pointers.G + 0x01, 0x98); // works but look at again later
 				SafeWrite8((uintptr_t)Pointers.H + 0x00, 0xEB);
-				SafeWriteBuf((uintptr_t)Pointers.J, Patches.J_NEW, sizeof(Patches.J_NEW));
-				SafeWrite8((uintptr_t)Pointers.red + 0x0C, 0x00);
-				SafeWriteBuf((uintptr_t)Pointers.yellow, Patches.NOP3, sizeof(Patches.NOP3));
-				SafeWriteBuf((uintptr_t)Pointers.wstimer, Patches.TIMER_NEW, sizeof(Patches.TIMER_NEW));
+				SafeWriteBuf((uintptr_t)Pointers.J, Patches.J_NEW, sizeof(Patches.J_NEW)); //water or other restrictions
+				SafeWrite8((uintptr_t)Pointers.R + 0x0C, 0x00); // red to green
+				SafeWriteBuf((uintptr_t)Pointers.Y, Patches.NOP3, sizeof(Patches.NOP3)); // move yellow
+				SafeWriteBuf((uintptr_t)Pointers.wstimer, Patches.TIMER_NEW, sizeof(Patches.TIMER_NEW)); // timer
+				SetCorrectBytes();
 				settings.PLACEINRED_ENABLED = true;
 				pir::ConsolePrint("Place In Red enabled.");
 				return true;
@@ -701,7 +718,7 @@ extern "C" {
 
 					if (consoleresult && param1[0]) {
 						switch (ConsoleSwitch(param1)) {
-						// debug and tests
+							// debug and tests
 						case pir::ConsoleSwitch("dumprefs"):     pir::DumpCellRefs();                 break;
 						case pir::ConsoleSwitch("dumpcmds"):     pir::DumpCmds();                     break;
 						case pir::ConsoleSwitch("logref"):       pir::LogWSRef();                     break;
@@ -709,7 +726,7 @@ extern "C" {
 						case pir::ConsoleSwitch("sound"):        pir::PlayFileSound(param2);          break;
 						case pir::ConsoleSwitch("uisound"):      pir::PlayUISound(param2);            break;
 
-						//toggles
+							//toggles
 						case pir::ConsoleSwitch("1"):            pir::Toggle_PlaceInRed();         break;
 						case pir::ConsoleSwitch("toggle"):       pir::Toggle_PlaceInRed();         break;
 						case pir::ConsoleSwitch("2"):            pir::Toggle_ObjectSnap();         break;
@@ -725,11 +742,11 @@ extern "C" {
 						case pir::ConsoleSwitch("7"):            pir::Toggle_Achievements();       break;
 						case pir::ConsoleSwitch("achievements"): pir::Toggle_Achievements();       break;
 
-						//scale constants
+							//scale constants
 						case pir::ConsoleSwitch("scale1"):       pir::SetCurrentRefScale(1.0000f); break;
 						case pir::ConsoleSwitch("scale10"):      pir::SetCurrentRefScale(9.9999f); break;
 
-						//scale up							  				     
+							//scale up							  				     
 						case pir::ConsoleSwitch("scaleup1"):	 pir::ModCurrentRefScale(1.0100f); break;
 						case pir::ConsoleSwitch("scaleup2"):	 pir::ModCurrentRefScale(1.0200f); break;
 						case pir::ConsoleSwitch("scaleup5"):	 pir::ModCurrentRefScale(1.0500f); break;
@@ -738,7 +755,7 @@ extern "C" {
 						case pir::ConsoleSwitch("scaleup50"):	 pir::ModCurrentRefScale(1.5000f); break;
 						case pir::ConsoleSwitch("scaleup100"):	 pir::ModCurrentRefScale(2.0000f); break;
 
-						//scale down			   			  				        			 
+							//scale down			   			  				        			 
 						case pir::ConsoleSwitch("scaledown1"):	 pir::ModCurrentRefScale(0.9900f); break;
 						case pir::ConsoleSwitch("scaledown2"):	 pir::ModCurrentRefScale(0.9800f); break;
 						case pir::ConsoleSwitch("scaledown5"):	 pir::ModCurrentRefScale(0.9500f); break;
@@ -747,23 +764,23 @@ extern "C" {
 						case pir::ConsoleSwitch("scaledown50"):  pir::ModCurrentRefScale(0.5000f); break;
 						case pir::ConsoleSwitch("scaledown75"):	 pir::ModCurrentRefScale(0.2500f); break;
 
-						// lock and unlock
-						case pir::ConsoleSwitch("lock"):         pir::LockOrUnlockCurrentWSRef(0, 1); break;
-						case pir::ConsoleSwitch("l"):            pir::LockOrUnlockCurrentWSRef(0, 1); break;
-						case pir::ConsoleSwitch("lockq"):        pir::LockOrUnlockCurrentWSRef(0, 0); break;
-						case pir::ConsoleSwitch("unlock"):       pir::LockOrUnlockCurrentWSRef(1, 0); break;
-						case pir::ConsoleSwitch("u"):            pir::LockOrUnlockCurrentWSRef(1, 0); break;
-						
+							// lock and unlock
+						case pir::ConsoleSwitch("lock"):         pir::LockUnlockWSRef(0, 1); break;
+						case pir::ConsoleSwitch("l"):            pir::LockUnlockWSRef(0, 1); break;
+						case pir::ConsoleSwitch("lockq"):        pir::LockUnlockWSRef(0, 0); break;
+						case pir::ConsoleSwitch("unlock"):       pir::LockUnlockWSRef(1, 0); break;
+						case pir::ConsoleSwitch("u"):            pir::LockUnlockWSRef(1, 0); break;
 
-						// console name ref toggle
+
+							// console name ref toggle
 						case pir::ConsoleSwitch("cnref"):        pir::Toggle_ConsoleRefName(); break;
-						
-											
-						// show help
+
+
+							// show help
 						case pir::ConsoleSwitch("?"):            pir::ConsolePrint(ConsoleHelpMSG); break;
 						case pir::ConsoleSwitch("help"):         pir::ConsolePrint(ConsoleHelpMSG); break;
 
-						// scale
+							// scale
 
 						default: pir::ConsolePrint(ConsoleHelpMSG);  break;
 						}
@@ -780,7 +797,7 @@ extern "C" {
 		static bool CreateConsoleCMD(const char* hijacked_cmd_fullname)
 		{
 			PIR_LOG_PREP
-			pirlog.FormattedMessage("[%s] Creating console command.", thisfunc);
+				pirlog.FormattedMessage("[%s] Creating console command.", thisfunc);
 
 			if (FirstConsole.cmd == nullptr) {
 				return false;
@@ -827,61 +844,62 @@ extern "C" {
 		static bool FoundRequiredMemoryPatterns()
 		{
 			PIR_LOG_PREP
-			if (GetConsoleArg.func && FirstConsole.func && FirstObScript.func && ScaleFuncs.setpattern && ScaleFuncs.getpattern && CurrentWSRef.func
-				&& WSMode.func && gConsole.func && Pointers.A && Pointers.B && Pointers.C && Pointers.D && Pointers.E && Pointers.F && Pointers.G && Pointers.H && Pointers.J
-				&& Pointers.yellow && Pointers.red && Pointers.wstimer && Pointers.gsnap && Pointers.osnap && Pointers.outlines && WSSize.func && Zoom.func && Rotate.func && SetMotionType.func)
-			{
-				/*
-				 allow plugin to load even if these arent found:
+				if (GetConsoleArg.func && FirstConsole.func && FirstObScript.func && ScaleFuncs.setpattern && ScaleFuncs.getpattern && CurrentWSRef.func
+					&& WSMode.func && gConsole.func && Pointers.A && Pointers.B && Pointers.C && Pointers.D && Pointers.E && Pointers.F && Pointers.G && Pointers.H && Pointers.J
+					&& Pointers.Y && Pointers.R && Pointers.wstimer && Pointers.gsnap && Pointers.osnap && Pointers.outlines && WSSize.func && Zoom.func && Rotate.func && SetMotionType.func)
+				{
+					/*
+					 allow plugin to load even if these arent found:
 
-				 Pointers.achievements - not a showstopper
-				 ConsoleRefCallFinder - copy of another mod never required
-				 GDataHandlerFinder - not using yet
-				*/
+					 Pointers.achievements - not a showstopper
+					 ConsoleRefCallFinder - copy of another mod never required
+					 GDataHandlerFinder - not using yet
+					*/
 
-				return true;
-			} else {
-				pirlog.FormattedMessage("[%s] Couldnt find required memory patterns! Check for conflicting mods.", thisfunc);
-				return false;
-			}
+					return true;
+				}
+				else {
+					pirlog.FormattedMessage("[%s] Couldnt find required memory patterns! Check for conflicting mods.", thisfunc);
+					return false;
+				}
 		}
 
 		//log all the memory patterns to the log file
 		static void LogMemoryPatterns()
 		{
 			pirlog.FormattedMessage("----------------------------------------------------------------------------");
-			pirlog.FormattedMessage("Base           :%p", RelocationManager::s_baseAddr);
-			pirlog.FormattedMessage("achievements   :%p", Pointers.achievements);
-			pirlog.FormattedMessage("A              :%p", Pointers.A);
-			pirlog.FormattedMessage("B              :%p", Pointers.B);
-			pirlog.FormattedMessage("C              :%p|OLD:%02X%02X%02X%02X%02X%02X%02X", Pointers.C, Patches.C_OLD[0], Patches.C_OLD[1], Patches.C_OLD[2], Patches.C_OLD[3], Patches.C_OLD[4], Patches.C_OLD[5], Patches.C_OLD[6]);
-			pirlog.FormattedMessage("D              :%p|OLD:%02X%02X%02X%02X%02X%02X%02X", Pointers.D, Patches.D_OLD[0], Patches.D_OLD[1], Patches.D_OLD[2], Patches.D_OLD[3], Patches.D_OLD[4], Patches.D_OLD[5], Patches.D_OLD[6]);
-			pirlog.FormattedMessage("E              :%p", Pointers.E);
-			pirlog.FormattedMessage("F              :%p", Pointers.F);
-			pirlog.FormattedMessage("G              :%p", Pointers.G);
-			pirlog.FormattedMessage("H              :%p", Pointers.H);
-			pirlog.FormattedMessage("J              :%p", Pointers.J);
-			pirlog.FormattedMessage("yellow         :%p", Pointers.yellow);
-			pirlog.FormattedMessage("red            :%p", Pointers.red);
-			pirlog.FormattedMessage("redcall        :%p", Pointers.redcall);
-			pirlog.FormattedMessage("wstimer        :%p", Pointers.wstimer);
-			pirlog.FormattedMessage("gsnap          :%p", Pointers.gsnap);
-			pirlog.FormattedMessage("osnap          :%p", Pointers.osnap);
-			pirlog.FormattedMessage("outlines       :%p", Pointers.outlines);
-			pirlog.FormattedMessage("WSMode         :%p|0x%08X|%p", WSMode.func, WSMode.r32, WSMode.addr);
-			pirlog.FormattedMessage("FirstConsole   :%p|0x%08X", FirstConsole.func, FirstConsole.r32);
-			pirlog.FormattedMessage("FirstObScript  :%p|0x%08X", FirstObScript.func, FirstObScript.r32);
-			pirlog.FormattedMessage("GConsole       :%p|0x%08X|%p", gConsole.func, gConsole.r32, gConsole.addr);
-			pirlog.FormattedMessage("GetConsoleArg  :%p|0x%08X|%p", GetConsoleArg.func, GetConsoleArg.r32, GetConsoleArg_Native);
-			pirlog.FormattedMessage("CurrentWSRef   :%p|0x%08X|%p", CurrentWSRef.func, CurrentWSRef.r32, CurrentWSRef.addr);
-			pirlog.FormattedMessage("GetScale       :%p|0x%08X", ScaleFuncs.getpattern, ScaleFuncs.g32);
-			pirlog.FormattedMessage("SetScale       :%p|0x%08X", ScaleFuncs.setpattern, ScaleFuncs.s32);
-			pirlog.FormattedMessage("SetMotionType  :%p|0x%08X", SetMotionType.func, SetMotionType.r32);
-			pirlog.FormattedMessage("PlayUISound    :%p|0x%08X", PlaySounds.Filepattern, PlaySounds.File_r32);
-			pirlog.FormattedMessage("PlayFileSound  :%p|0x%08X", PlaySounds.UIpattern, PlaySounds.UI_r32);
-			pirlog.FormattedMessage("WSSize|Floats  :%p|%p", WSSize.func, WSSize.addr);
-			pirlog.FormattedMessage("Rotate         :%p|%p|orig %f|slow %f", Rotate.func, Rotate.addr, settings.fOriginalROTATE, settings.fSlowerROTATE);
-			pirlog.FormattedMessage("Zoom           :%p|%p|orig %f|slow %f", Zoom.func, Zoom.addr, settings.fOriginalZOOM, settings.fSlowerZOOM);
+			pirlog.FormattedMessage("Base          :%p", RelocationManager::s_baseAddr);
+			pirlog.FormattedMessage("achievements  :%p", Pointers.achievements);
+			pirlog.FormattedMessage("A             :%p", Pointers.A);
+			pirlog.FormattedMessage("B             :%p", Pointers.B);
+			pirlog.FormattedMessage("C             :%p|OLD:%02X%02X%02X%02X%02X%02X%02X", Pointers.C, Patches.C_OLD[0], Patches.C_OLD[1], Patches.C_OLD[2], Patches.C_OLD[3], Patches.C_OLD[4], Patches.C_OLD[5], Patches.C_OLD[6]);
+			pirlog.FormattedMessage("D             :%p|OLD:%02X%02X%02X%02X%02X%02X%02X", Pointers.D, Patches.D_OLD[0], Patches.D_OLD[1], Patches.D_OLD[2], Patches.D_OLD[3], Patches.D_OLD[4], Patches.D_OLD[5], Patches.D_OLD[6]);
+			pirlog.FormattedMessage("E             :%p", Pointers.E);
+			pirlog.FormattedMessage("F             :%p", Pointers.F);
+			pirlog.FormattedMessage("G             :%p", Pointers.G);
+			pirlog.FormattedMessage("H             :%p", Pointers.H);
+			pirlog.FormattedMessage("J             :%p", Pointers.J);
+			pirlog.FormattedMessage("Y             :%p", Pointers.Y);
+			pirlog.FormattedMessage("R             :%p", Pointers.R);
+			pirlog.FormattedMessage("RCALL         :%p", Pointers.RCALL);
+			pirlog.FormattedMessage("wstimer       :%p", Pointers.wstimer);
+			pirlog.FormattedMessage("gsnap         :%p", Pointers.gsnap);
+			pirlog.FormattedMessage("osnap         :%p", Pointers.osnap);
+			pirlog.FormattedMessage("outlines      :%p", Pointers.outlines);
+			pirlog.FormattedMessage("FirstConsole  :%p|Fallout4.exe+0x%08X", FirstConsole.func, FirstConsole.r32);
+			pirlog.FormattedMessage("FirstObScript :%p|Fallout4.exe+0x%08X", FirstObScript.func, FirstObScript.r32);
+			pirlog.FormattedMessage("GetScale      :%p|Fallout4.exe+0x%08X", ScaleFuncs.getpattern, ScaleFuncs.g32);
+			pirlog.FormattedMessage("SetScale      :%p|Fallout4.exe+0x%08X", ScaleFuncs.setpattern, ScaleFuncs.s32);
+			pirlog.FormattedMessage("SetMotionType :%p|Fallout4.exe+0x%08X", SetMotionType.func, SetMotionType.r32);
+			pirlog.FormattedMessage("PlayFileSound :%p|Fallout4.exe+0x%08X", PlaySounds.Filepattern, PlaySounds.File_r32);
+			pirlog.FormattedMessage("PlayUISound   :%p|Fallout4.exe+0x%08X", PlaySounds.UIpattern, PlaySounds.UI_r32);
+			pirlog.FormattedMessage("WSMode        :%p|Fallout4.exe+0x%08X|%p", WSMode.func, WSMode.r32, WSMode.addr);
+			pirlog.FormattedMessage("CurrentWSRef  :%p|Fallout4.exe+0x%08X|%p", CurrentWSRef.func, CurrentWSRef.r32, CurrentWSRef.addr);
+			pirlog.FormattedMessage("GConsole      :%p|Fallout4.exe+0x%08X|%p", gConsole.func, gConsole.r32, gConsole.addr);
+			pirlog.FormattedMessage("GetConsoleArg :%p|Fallout4.exe+0x%08X|%p", GetConsoleArg.func, GetConsoleArg.r32, GetConsoleArg_Native);
+			pirlog.FormattedMessage("WSSize|Floats :%p|%p", WSSize.func, WSSize.addr);
+			pirlog.FormattedMessage("Rotate        :%p|%p|orig %f|slow %f", Rotate.func, Rotate.addr, settings.fOriginalROTATE, settings.fSlowerROTATE);
+			pirlog.FormattedMessage("Zoom          :%p|%p|orig %f|slow %f", Zoom.func, Zoom.addr, settings.fOriginalZOOM, settings.fSlowerZOOM);
 			pirlog.FormattedMessage("----------------------------------------------------------------------------");
 		}
 
@@ -889,7 +907,7 @@ extern "C" {
 		static void ReadINIDefaults()
 		{
 			PIR_LOG_PREP
-			pirlog.FormattedMessage("[%s] Reading and toggling default options.", thisfunc);
+				pirlog.FormattedMessage("[%s] Reading and toggling default options.", thisfunc);
 
 			// store the setting as a string
 			std::string SETTING01 = GetPIRConfigOption("Main", "PLACEINRED_ENABLED");
@@ -915,7 +933,7 @@ extern "C" {
 			//[Main] OUTLINES_ENABLED
 			if (SETTING06 == "0") { pir::Toggle_Outlines(); }
 			//[Main] ACHIEVEMENTS_ENABLED
-			if (SETTING07 == "1") { pir::Toggle_Achievements();	}
+			if (SETTING07 == "1") { pir::Toggle_Achievements(); }
 			//[Main] ConsoleNameRef_ENABLED
 			if (SETTING08 == "1") { pir::Toggle_ConsoleRefName(); }
 			//[Main] PrintConsoleMessages
@@ -944,15 +962,15 @@ extern "C" {
 			}
 			// toggle this one AFTER reading the ini setting
 			if (SETTING04 == "1") { pir::Toggle_SlowZoomAndRotate(); }
-			
+
 		}
-		
+
 		//init f4se stuff and return false if anything fails
 		static bool InitF4SE(const F4SEInterface* f4se)
 		{
 			PIR_LOG_PREP
-			// get a plugin handle
-			pirPluginHandle = f4se->GetPluginHandle();
+				// get a plugin handle
+				pirPluginHandle = f4se->GetPluginHandle();
 			if (!pirPluginHandle) {
 				pirlog.FormattedMessage("[%s] Couldn't get a plugin handle!", thisfunc);
 				return false;
@@ -983,7 +1001,7 @@ extern "C" {
 			return true;
 
 		}
-		
+
 		//search for required memory patterns. store old bytes. relocate functions. etc.
 		static void InitPIR()
 		{
@@ -1002,11 +1020,11 @@ extern "C" {
 			Pointers.achievements = Utility::pattern("48 83 EC 28 C6 44 24 ? 00 84 D2 74 1C 48").count(1).get(0).get<uintptr_t>();
 			Pointers.gsnap = Utility::pattern("0F 86 ? ? ? ? 41 8B 4E 34 49 B8").count(1).get(0).get<uintptr_t>();
 			Pointers.osnap = Utility::pattern("F3 0F 10 35 ? ? ? ? 0F 28 C6 48 ? ? ? ? ? ? 33 C0").count(1).get(0).get<uintptr_t>();
-			Pointers.outlines = Utility::pattern("C6 05 ? ? ? ? 01 88 15 ? ? ? ? 76 13 48 8B 05").count(1).get(0).get<uintptr_t>(); // object outlines not instant
-			Pointers.red = Utility::pattern("89 05 ? ? ? ? C6 05 ? ? ? ? 01 48 83 C4 68 C3").count(1).get(0).get<uintptr_t>(); //keep objects green
-			Pointers.redcall = Utility::pattern("E8 ? ? ? ? 83 3D ? ? ? ? 00 0F 87 ? ? ? ? 48 8B 03 48 8B CB FF 90 ? ? ? ? 48").count(1).get(0).get<uintptr_t>(); // prevent function from being called after red is patched
-			Pointers.wstimer = Utility::pattern("0F 85 AB 00 00 00 F3 0F 10 05 ? ? ? ? 41 0F 2E C3 75 66 F3 0F 10 05 ? ? ? ? F3 0F 11 05 ? ? ? ? C6").count(1).get(0).get<uintptr_t>(); // New ws timer check is buried in here
-			Pointers.yellow = Utility::pattern("8B 58 14 48 8D 4C 24 30 8B D3 45 33 C0 E8").count(1).get(0).get<uintptr_t>(); // allow moving yellow objects
+			Pointers.outlines = Utility::pattern("C6 05 ? ? ? ? 01 88 15 ? ? ? ? 76 13 48 8B 05").count(1).get(0).get<uintptr_t>();
+			Pointers.R = Utility::pattern("89 05 ? ? ? ? C6 05 ? ? ? ? 01 48 83 C4 68 C3").count(1).get(0).get<uintptr_t>(); //keep objects green
+			Pointers.RCALL = Utility::pattern("E8 ? ? ? ? 83 3D ? ? ? ? 00 0F 87 ? ? ? ? 48 8B 03 48 8B CB FF 90 ? ? ? ? 48").count(1).get(0).get<uintptr_t>(); // prevent function from being called after R is patched
+			Pointers.wstimer = Utility::pattern("0F 85 AB 00 00 00 F3 0F 10 05 ? ? ? ? 41 0F 2E").count(1).get(0).get<uintptr_t>(); // Shortened to match xbox version
+			Pointers.Y = Utility::pattern("8B 58 14 48 8D 4C 24 30 8B D3 45 33 C0 E8").count(1).get(0).get<uintptr_t>(); // allow moving Y objects
 			FirstConsole.func = Utility::pattern("48 8D 1D ? ? ? ? 48 8D 35 ? ? ? ? 66 90 48 8B 53 F8").count(1).get(0).get<uintptr_t>();
 			FirstObScript.func = Utility::pattern("48 8D 1D ? ? ? ? 4C 8D 35 ? ? ? ? 0F 1F 40 00 0F 1F 84 00 00 00 00 00").count(1).get(0).get<uintptr_t>();
 			GetConsoleArg.func = Utility::pattern("4C 89 4C 24 20 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57").count(1).get(0).get<uintptr_t>();
@@ -1023,11 +1041,11 @@ extern "C" {
 			gDataHandler.func = Utility::pattern("48 83 3D ? ? ? ? 00 4D 8B F1 41 0F B6 F0 48 8B FA 48 8B D9 0F 84 ? ? ? ? 80 3D ? ? ? ? 00 48").count(1).get(0).get<uintptr_t>();
 
 			// store old bytes
-			if (Pointers.C){ReadMemory((uintptr_t(Pointers.C)), &Patches.C_OLD, 0x07); }
-			if (Pointers.D){ReadMemory((uintptr_t(Pointers.D)), &Patches.D_OLD, 0x07); }
-			if (Pointers.F){ReadMemory((uintptr_t(Pointers.F)), &Patches.F_OLD, 0x06); }
-			if (Pointers.redcall) {ReadMemory((uintptr_t(Pointers.redcall)), &Patches.redcall_OLD, 0x05); }
-			if (Pointers.osnap) {ReadMemory((uintptr_t(Pointers.osnap)), &Patches.OSNAP_OLD, 0x08); }
+			if (Pointers.C) { ReadMemory((uintptr_t(Pointers.C)), &Patches.C_OLD, 0x07); }
+			if (Pointers.D) { ReadMemory((uintptr_t(Pointers.D)), &Patches.D_OLD, 0x07); }
+			if (Pointers.F) { ReadMemory((uintptr_t(Pointers.F)), &Patches.F_OLD, 0x06); }
+			if (Pointers.RCALL) { ReadMemory((uintptr_t(Pointers.RCALL)), &Patches.redcall_OLD, 0x05); }
+			if (Pointers.osnap) { ReadMemory((uintptr_t(Pointers.osnap)), &Patches.OSNAP_OLD, 0x08); }
 
 			//wssize
 			if (WSSize.func) {
@@ -1140,20 +1158,20 @@ extern "C" {
 	{
 		// start log
 		PIR_LOG_PREP
-		pirlog.OpenRelative(CSIDL_MYDOCUMENTS, pluginLogFile);
+			pirlog.OpenRelative(CSIDL_MYDOCUMENTS, pluginLogFile);
 		pirlog.FormattedMessage("[%s] Plugin loaded.", thisfunc);
 
-		if (!pir::InitF4SE(f4se)){
+		if (!pir::InitF4SE(f4se)) {
 			return false;
 		}
 
 		pir::InitPIR();
 
-		if (!pir::FoundRequiredMemoryPatterns()){
+		if (!pir::FoundRequiredMemoryPatterns()) {
 			pir::LogMemoryPatterns();
 			return false;
 		}
-		
+
 		if (!pir::CreateConsoleCMD("GameComment"))
 		{
 			pirlog.FormattedMessage("[%s] Failed to create console command! Plugin will run with defaults.", thisfunc);
@@ -1165,7 +1183,6 @@ extern "C" {
 		// plugin loaded
 		pirlog.FormattedMessage("[%s] Plugin load finished!", thisfunc);
 		pir::LogMemoryPatterns();
-				
 		return true;
 	}
 
@@ -1183,14 +1200,4 @@ extern "C" {
 		0,
 	};
 
-
-
-
-
-
-
-}//end of extern c
-
-
-// stuff thats not extern c
-
+}

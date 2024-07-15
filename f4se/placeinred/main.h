@@ -26,6 +26,7 @@ typedef void  (*_PlayFileSound_Native) (const char*);
 typedef float (*_GetScale_Native)      (TESObjectREFR* objRef);
 typedef void  (*_SetScale_Native)      (TESObjectREFR* objRef, float scale);
 
+// structure for sound playing functions
 struct _PlaySounds
 {
 	uintptr_t* UIpattern = nullptr;
@@ -68,9 +69,9 @@ struct _POINTERS
 	uintptr_t* G = nullptr;
 	uintptr_t* H = nullptr;
 	uintptr_t* J = nullptr;
-	uintptr_t* red = nullptr;
-	uintptr_t* redcall = nullptr;
-	uintptr_t* yellow = nullptr;
+	uintptr_t* R = nullptr;
+	uintptr_t* RCALL = nullptr;
+	uintptr_t* Y = nullptr;
 	uintptr_t* wstimer = nullptr;
 	uintptr_t* gsnap = nullptr;
 	uintptr_t* osnap = nullptr;
@@ -89,29 +90,34 @@ struct _PATCHES
 	UInt8  NOP6[6] = { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; // 6 byte nop
 	UInt8  NOP7[7] = { 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00 }; // 7 byte nop
 	UInt8  NOP8[8] = { 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }; // 8 byte nop
-	UInt8  C_OLD[7];
+	UInt8  C_OLD[7]; //0F B6 05 ? ? ? ? 
 	UInt8  C_NEW[7] = { 0x31, 0xC0, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; //xor al,al;nop x5
-	UInt8  D_OLD[7];
+	UInt8  CC_OLD[2] = { 0x75, 0x11 }; // jne
+	UInt8  CC_NEW[2] = { 0xEB, 0x1C }; // jmp 
+	UInt8  D_OLD[7]; //0F B6 05 ? ? ? ?
 	UInt8  D_NEW[7] = { 0x31, 0xC0, 0xB0, 0x01, 0x90, 0x90, 0x90 }; //xor al,al;mov al,01;nop x3
-	UInt8  F_OLD[6];
-	UInt8  J_OLD[2] = { 0x74, 0x35 };
-	UInt8  J_NEW[2] = { 0xEB, 0x30 };
-	UInt8  K_OLD[2] = { 0x75, 0x11 }; // jne
-	UInt8  K_NEW[2] = { 0xEB, 0x1C }; // jmp 
-	UInt8  redcall_OLD[5];
+	UInt8  F_OLD[6];  //88 05 ? ? ? ?
+	UInt8  J_OLD[2] = { 0x74, 0x35 }; //je 35
+	UInt8  J_NEW[2] = { 0xEB, 0x30 }; // jmp 30
+	UInt8  redcall_OLD[5]; //E8 ? ? ? ? 
 	UInt8  Y_OLD[3] = { 0x8B, 0x58, 0x14 }; // mov rbx,[rax+0x14]
 	UInt8  TIMER_OLD[6] = { 0x0F, 0x85, 0xAB, 0x00, 0x00, 0x00 }; //original is jne
 	UInt8  TIMER_NEW[6] = { 0xE9, 0xAC, 0x00, 0x00, 0x00, 0x90 }; //jmp instead
 	UInt8  achievements_new[3] = { 0x30, 0xC0, 0xC3 }; // xor al, al; ret
 	UInt8  achievements_old[4] = { 0x48, 0x83, 0xEC, 0x28 }; // sub rsp,28
-	UInt8  OSNAP_OLD[8];
+	UInt8  OSNAP_OLD[8]; //F3 0F 10 35 ? ? ? ?
 	UInt8  OSNAP_NEW[8] = { 0x0F, 0x57, 0xF6, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; // xorps xmm6, xmm6; NOP5;
-	UInt8  DRAWS_OLD[6];
-	UInt8  TRIS_OLD[6];
+	UInt8  DRAWS_OLD[6]; //01 05 ? ? ? ? 
+	UInt8  TRIS_OLD[6]; //01 05 ? ? ? ? 
+
 	UInt8  CNameRef_OLD[6] = { 0xFF, 0x90, 0xD0, 0x01, 0x00, 0x00 }; //call qword finder [rax+000001D0]
 	size_t CNameRef_OLD_Size = sizeof(CNameRef_OLD) / sizeof(CNameRef_OLD[0]);
+
 	UInt32 CurrentWSRef_Offsets[4] = { 0x0, 0x0, 0x10, 0x110 };
 	size_t CurrentWSRef_OffsetsSize = sizeof(CurrentWSRef_Offsets)/sizeof(CurrentWSRef_Offsets[0]);
+
+	UInt8  TWO_ZEROS[2] = { 0x00, 0x00 };
+	UInt8  TWO_ONES[2] = { 0x01, 0x01 };
 };
 
 // Struct to store things for simple
@@ -141,4 +147,24 @@ struct _CNameRef
 	uintptr_t  goodfunc = 0; // the good function full address
 	SInt32     goodfinder_r32 = 0; // rel32 of the good function
 };
+
+
+
+
+/* helpful notes
+
+
+  interesting bytes starting at bWSMode (Fallout4.exe+2E74994)
+
+  01       00          ??        0000          ????????     0101        01
+  bwsmode  holding E   unknown   zerochecks    unknown      onechecks   something grabbed
+  0x94     0x95        0x96      0x97 0x98     0x99-0x9C    0x9D 0x9E   0x9F
+  01       00          00        00   00       00000001     01   01     01
+
+
+
+
+
+*/
+
 

@@ -12,7 +12,4 @@
   <ItemGroup>
     <None Include="exports.def" />
   </ItemGroup>
-  <ItemGroup>
-    <Text Include="test.cpp" />
-  </ItemGroup>
 </Project>
