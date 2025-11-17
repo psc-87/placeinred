@@ -1,4 +1,6 @@
 #pragma once
+#pragma warning(disable: 4200)
+
 #include "shlobj.h"
 #include "pattern.h"
 #include "f4se.h"
@@ -10,8 +12,10 @@
 // f4se plugin
 static IDebugLog               pirlog;
 static UInt32                  pluginVersion = 10;
-static const char*             pluginLogFile = { "\\My Games\\Fallout4\\F4SE\\PlaceInRed.log" };
-static std::string             pluginINI = "Data\\F4SE\\Plugins\\PlaceInRed.ini";
+//static const char*             pluginLogFile = { "\\My Games\\Fallout4\\F4SE\\PlaceInRed.log" };
+static constexpr const char* pluginLogFile = "\\\\My Games\\\\Fallout4\\\\F4SE\\\\PlaceInRed.log";
+static constexpr const char* pluginINI = "\\\\Data\\\\F4SE\\\\Plugins\\\\PlaceInRed.ini";
+//static std::string             pluginINI = "Data\\F4SE\\Plugins\\PlaceInRed.ini";
 static PluginHandle            pirPluginHandle = kPluginHandle_Invalid;
 static F4SEPapyrusInterface*   g_papyrus = nullptr;
 static F4SEMessagingInterface* g_messaging = nullptr;
@@ -50,7 +54,7 @@ struct _SETTINGS
 	bool    OUTLINES_ENABLED = true; //pir 6
 	bool    ACHIEVEMENTS_ENABLED = false; //pir 7
 	bool    ConsoleNameRef_ENABLED = false; //pir cnref
-	bool    PrintConsoleMessages = true; //ini
+	bool    PrintConsoleMessages = true; // updated later to ini value and when toggled
 	Float32 fOriginalZOOM = 10.0F;  //updated later to fItemHoldDistantSpeed:Workshop
 	Float32 fOriginalROTATE = 5.0F; //updated later to fItemRotationSpeed:Workshop
 	Float32 fSlowerZOOM = 1.0F;     //updated later to plugin ini value
@@ -91,11 +95,11 @@ struct _PATCHES
 	UInt8  NOP6[6] =        { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; // 6 byte nop
 	UInt8  NOP7[7] =        { 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00 }; // 7 byte nop
 	UInt8  NOP8[8] =        { 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }; // 8 byte nop
-	UInt8  C_OLD[7] =       { 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00 }; // init NOP7 -> 0FB605???? 
+	UInt8  C_OLD[7] =       { 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00 }; // init NOP7 -> 0FB605???? movzx eax,byte ptr [Fallout4.exe+2E74998]
 	UInt8  C_NEW[7] =       { 0x31, 0xC0, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; //xor al,al;nop x5
 	UInt8  CC_OLD[2] =      { 0x75, 0x11 }; // JNE 0x11
 	UInt8  CC_NEW[2] =      { 0xEB, 0x1C }; // JMP 0x1C
-	UInt8  D_OLD[7] =       { 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00 }; // init NOP7 -> 0FB605????
+	UInt8  D_OLD[7] =       { 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00 }; // init NOP7 -> 0FB605???? movzx eax,byte ptr [Fallout4.exe+2E7499D]
 	UInt8  D_NEW[7] =       { 0x31, 0xC0, 0xB0, 0x01, 0x90, 0x90, 0x90 }; //xor al,al;mov al,01;nop x3
 	UInt8  F_OLD[6] =       { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 };  // init NOP6 -> 8805???? mov [Fallout4.exe+2E74999],al
 	UInt8  J_OLD[2] =       { 0x74, 0x35 }; // JE 0x35
@@ -109,7 +113,7 @@ struct _PATCHES
 	UInt8  OSNAP_OLD[8] =   { 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }; // init NOP8 -> F30F1035????
 	UInt8  OSNAP_NEW[8] =   { 0x0F, 0x57, 0xF6, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; // xorps xmm6, xmm6; NOP5;
 	UInt8  DRAWS_OLD[6] =   { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 };  // init NOP6 -> 0105???? 
-	UInt8  TRIS_OLD[6] =    { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 };  // init NOP6 -> 0105???? 
+	UInt8  TRIS_OLD[6] =    { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 };  // init NOP6 -> 0105????
 
 	UInt8  CNameRef_OLD[6] = { 0xFF, 0x90, 0xD0, 0x01, 0x00, 0x00 }; //call qword finder [rax+000001D0]
 	size_t CNameRef_OLD_Size = sizeof(CNameRef_OLD) / sizeof(CNameRef_OLD[0]);
@@ -149,26 +153,6 @@ struct _CNameRef
 	uintptr_t  goodfunc = 0; // the good function full address
 	SInt32     goodfinder_r32 = 0; // rel32 of the good function
 };
-
-static _SETTINGS    settings;
-static _PATCHES     Patches;
-static _POINTERS    Pointers;
-static _PlaySounds  PlaySounds;
-static _ScaleFuncs  ScaleFuncs;
-static _CNameRef    CNameRef;
-static SimpleFinder FirstConsole;
-static SimpleFinder FirstObScript;
-static SimpleFinder WSMode;
-static SimpleFinder WSSize;
-static SimpleFinder gConsole;
-static SimpleFinder gDataHandler;
-static SimpleFinder CurrentWSRef;
-static SimpleFinder Zoom;
-static SimpleFinder Rotate;
-static SimpleFinder SetMotionType;
-static SimpleFinder GetConsoleArg;
-static _SetMotionType_Native SetMotionType_Native = nullptr;
-static _GetConsoleArg_Native GetConsoleArg_Native = nullptr;
 
 
 /* helpful notes

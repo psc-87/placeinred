@@ -4,6 +4,10 @@ most of this is from the F4SE clipboard mod
 some of it my own stuff
 */
 
+
+//test sf pattern
+//48 83 EC 28 48 8B C1 8A 0A 38 88 40 02 00 00 74 0B
+
 #include "main.h"
 #include <map>
 #include <set>
@@ -28,6 +32,7 @@ ModAngle
 //ModAngleXFinder = Utility::pattern("40 53 48 83 EC 30 0F 29 74 24 20 48 8B D9 0F 28 F1 0F 2E B1 C0 00 00 00").count(1).get(0).get<uintptr_t>();
 //ModAngleYFinder = Utility::pattern("40 53 48 83 EC 30 0F 29 74 24 20 48 8B D9 0F 28 F1 0F 2E B1 C4 00 00 00").count(1).get(0).get<uintptr_t>();
 //ModAngleZFinder = Utility::pattern("40 53 48 83 EC 30 0F 29 74 24 20 48 8B D9 0F 28 F1 0F 2E B1 C8 00 00 00").count(1).get(0).get<uintptr_t>();
+//modav 4C 8B DC 53 48 83 EC 60 49 8D 43 E8 49
 
 typedef void (*_ModAngleXYZ) (TESObjectREFR* objRef, float scale);
 static _ModAngleXYZ ModAngleX = nullptr;

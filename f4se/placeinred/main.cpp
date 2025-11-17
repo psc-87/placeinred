@@ -1,5 +1,25 @@
 #include "main.h"
 
+static _SETTINGS    settings;
+static _PATCHES     Patches;
+static _POINTERS    Pointers;
+static _PlaySounds  PlaySounds;
+static _ScaleFuncs  ScaleFuncs;
+static _CNameRef    CNameRef;
+static SimpleFinder FirstConsole;
+static SimpleFinder FirstObScript;
+static SimpleFinder WSMode;
+static SimpleFinder WSSize;
+static SimpleFinder gConsole;
+static SimpleFinder gDataHandler;
+static SimpleFinder CurrentWSRef;
+static SimpleFinder Zoom;
+static SimpleFinder Rotate;
+static SimpleFinder SetMotionType;
+static SimpleFinder GetConsoleArg;
+static _SetMotionType_Native SetMotionType_Native = nullptr;
+static _GetConsoleArg_Native GetConsoleArg_Native = nullptr;
+
 namespace pir {
 	// return the ini path as a std string
 	static const std::string& GetPluginINIPath()
@@ -74,23 +94,31 @@ extern "C" {
 		}
 
 		// return the same char array with '\r' '\n' and '|' removed
-		static char* StripNewLinesAndPipes(const char* str) {
-			size_t len = strlen(str);
-			char* newStr = new char[len + 1]; // Allocate memory for the new string
+		//static char* StripNewLinesAndPipes(const char* str) {
+		//	size_t len = strlen(str);
+		//	char* newStr = new char[len + 1]; // Allocate memory for the new string
+		//
+		//	const char* src = str;
+		//	char* dst = newStr;
+		//
+		//	while (*src) {
+		//		if ((*src != '\n') && (*src != 0x7C) && (*src != '\r'))
+		//		{
+		//			*dst++ = *src;
+		//		}
+		//		src++;
+		//	}
+		//	*dst = '\0'; // Null-terminate the result string
+		//
+		//	return newStr;
+		//}
 
-			const char* src = str;
-			char* dst = newStr;
-
-			while (*src) {
-				if ((*src != '\n') && (*src != 0x7C) && (*src != '\r'))
-				{
-					*dst++ = *src;
-				}
-				src++;
-			}
-			*dst = '\0'; // Null-terminate the result string
-
-			return newStr;
+		char* StripNewLinesAndPipes(const char* str) {
+			std::string cleaned;
+			for (; *str; ++str)
+				if (*str != '\n' && *str != '|' && *str != '\r')
+					cleaned += *str;
+			return _strdup(cleaned.c_str()); // or return std::string
 		}
 
 		// Simple function to read memory (credit reg2k).
@@ -195,7 +223,7 @@ extern "C" {
 		}
 
 		// return the currently selected workshop ref with some safety checks
-		static TESObjectREFR* GetCurrentWSRef(bool refonly = 1)
+		static TESObjectREFR* GetCurrentWSRef(bool refonly=1)
 		{
 			PIR_LOG_PREP
 			if (CurrentWSRef.ptr && CurrentWSRef.addr && pir::InWorkshopMode()) {
@@ -225,8 +253,8 @@ extern "C" {
 		{
 			VirtualMachine* vm = (*g_gameVM)->m_virtualMachine;
 			TESObjectREFR* ref = GetCurrentWSRef();
-			UInt32 motion = 00000002; //Motion_Keyframed
-			bool acti = false; //akAllowACtivate
+			UInt32 motion = 00000002; //Motion_Keyframed aka locked in place
+			bool acti = false; //akAllowActivate
 
 			if (unlock == 1) {
 				motion = 00000001; //Motion_Dynamic unlock and release to havok
@@ -549,7 +577,7 @@ extern "C" {
 		}
 
 		// toggle consolenameref
-		static bool Toggle_ConsoleRefName()
+		static bool Toggle_CNameRef()
 		{
 			if (CNameRef.goodfinder == false || CNameRef.call == false) {
 				return false;
@@ -669,7 +697,7 @@ extern "C" {
 			}
 		}
 
-		// play sound by filename. must be under data>sounds>
+		// play sound by filename. must be under data\sounds
 		static void PlayFileSound(const char* wav)
 		{
 			if (PlaySounds.File_func) {
@@ -752,7 +780,7 @@ extern "C" {
 
 
 							// console name ref toggle
-						case pir::ConsoleSwitch("cnref"):        pir::Toggle_ConsoleRefName(); break;
+						case pir::ConsoleSwitch("cnref"):        pir::Toggle_CNameRef(); break;
 
 
 							// show help
@@ -851,47 +879,49 @@ extern "C" {
 		}
 
 		//log all the memory patterns to the log file
-		static void LogMemoryPatterns()
+		static void LogPatterns()
 		{
+
 			pirlog.FormattedMessage("----------------------------------------------------------------------------");
-			pirlog.FormattedMessage("Base          :%p", RelocationManager::s_baseAddr);
-			pirlog.FormattedMessage("achievements  :%p", Pointers.achievements);
-			pirlog.FormattedMessage("A             :%p", Pointers.A);
-			pirlog.FormattedMessage("B             :%p", Pointers.B);
-			pirlog.FormattedMessage("C             :%p|OLD:%02X%02X%02X%02X%02X%02X%02X", Pointers.C, Patches.C_OLD[0], Patches.C_OLD[1], Patches.C_OLD[2], Patches.C_OLD[3], Patches.C_OLD[4], Patches.C_OLD[5], Patches.C_OLD[6]);
-			pirlog.FormattedMessage("D             :%p|OLD:%02X%02X%02X%02X%02X%02X%02X", Pointers.D, Patches.D_OLD[0], Patches.D_OLD[1], Patches.D_OLD[2], Patches.D_OLD[3], Patches.D_OLD[4], Patches.D_OLD[5], Patches.D_OLD[6]);
-			pirlog.FormattedMessage("E             :%p", Pointers.E);
-			pirlog.FormattedMessage("F             :%p", Pointers.F);
-			pirlog.FormattedMessage("G             :%p", Pointers.G);
-			pirlog.FormattedMessage("H             :%p", Pointers.H);
-			pirlog.FormattedMessage("J             :%p", Pointers.J);
-			pirlog.FormattedMessage("Y             :%p", Pointers.Y);
-			pirlog.FormattedMessage("R             :%p", Pointers.R);
-			pirlog.FormattedMessage("RC            :%p", Pointers.RC);
-			pirlog.FormattedMessage("CORRECT       :%p", Pointers.CORRECT);
-			pirlog.FormattedMessage("wstimer       :%p", Pointers.wstimer);
-			pirlog.FormattedMessage("gsnap         :%p", Pointers.gsnap);
-			pirlog.FormattedMessage("osnap         :%p", Pointers.osnap);
-			pirlog.FormattedMessage("outlines      :%p", Pointers.outlines);
+			pirlog.FormattedMessage("Base          :%p|Fallout4.exe+0x00000000", RelocationManager::s_baseAddr);
+			pirlog.FormattedMessage("achievements  :%p|Fallout4.exe+0x%08X", Pointers.achievements, (uintptr_t)Pointers.achievements - RelocationManager::s_baseAddr);
+			pirlog.FormattedMessage("A             :%p|Fallout4.exe+0x%08X", Pointers.A, (uintptr_t)Pointers.A - RelocationManager::s_baseAddr );
+			pirlog.FormattedMessage("B             :%p|Fallout4.exe+0x%08X", Pointers.B, (uintptr_t)Pointers.B - RelocationManager::s_baseAddr);
+			pirlog.FormattedMessage("C             :%p|Fallout4.exe+0x%08X (OLD: %02X%02X%02X%02X%02X%02X%02X)", Pointers.C, (uintptr_t)Pointers.C - RelocationManager::s_baseAddr, Patches.C_OLD[0], Patches.C_OLD[1], Patches.C_OLD[2], Patches.C_OLD[3], Patches.C_OLD[4], Patches.C_OLD[5], Patches.C_OLD[6]);
+			pirlog.FormattedMessage("D             :%p|Fallout4.exe+0x%08X (OLD: %02X%02X%02X%02X%02X%02X%02X)", Pointers.D, (uintptr_t)Pointers.D - RelocationManager::s_baseAddr, Patches.D_OLD[0], Patches.D_OLD[1], Patches.D_OLD[2], Patches.D_OLD[3], Patches.D_OLD[4], Patches.D_OLD[5], Patches.D_OLD[6]);
+			pirlog.FormattedMessage("E             :%p|Fallout4.exe+0x%08X", Pointers.E, (uintptr_t)Pointers.E - RelocationManager::s_baseAddr);
+			pirlog.FormattedMessage("F             :%p|Fallout4.exe+0x%08X", Pointers.F, (uintptr_t)Pointers.F - RelocationManager::s_baseAddr);
+			pirlog.FormattedMessage("G             :%p|Fallout4.exe+0x%08X", Pointers.G, (uintptr_t)Pointers.G - RelocationManager::s_baseAddr);
+			pirlog.FormattedMessage("H             :%p|Fallout4.exe+0x%08X", Pointers.H, (uintptr_t)Pointers.H - RelocationManager::s_baseAddr);
+			pirlog.FormattedMessage("J             :%p|Fallout4.exe+0x%08X", Pointers.J, (uintptr_t)Pointers.J - RelocationManager::s_baseAddr);
+			pirlog.FormattedMessage("Y             :%p|Fallout4.exe+0x%08X", Pointers.Y, (uintptr_t)Pointers.Y - RelocationManager::s_baseAddr);
+			pirlog.FormattedMessage("R             :%p|Fallout4.exe+0x%08X", Pointers.R, (uintptr_t)Pointers.R - RelocationManager::s_baseAddr);
+			pirlog.FormattedMessage("RC            :%p|Fallout4.exe+0x%08X", Pointers.RC, (uintptr_t)Pointers.RC - RelocationManager::s_baseAddr);
+			pirlog.FormattedMessage("CORRECT       :%p|Fallout4.exe+0x%08X", Pointers.CORRECT, (uintptr_t)Pointers.CORRECT - RelocationManager::s_baseAddr);
+			pirlog.FormattedMessage("wstimer       :%p|Fallout4.exe+0x%08X", Pointers.wstimer, (uintptr_t)Pointers.wstimer - RelocationManager::s_baseAddr);
+			pirlog.FormattedMessage("gsnap         :%p|Fallout4.exe+0x%08X", Pointers.gsnap, (uintptr_t)Pointers.gsnap - RelocationManager::s_baseAddr);
+			pirlog.FormattedMessage("osnap         :%p|Fallout4.exe+0x%08X", Pointers.osnap, (uintptr_t)Pointers.osnap - RelocationManager::s_baseAddr);
+			pirlog.FormattedMessage("outlines      :%p|Fallout4.exe+0x%08X", Pointers.outlines, (uintptr_t)Pointers.outlines - RelocationManager::s_baseAddr);
 			pirlog.FormattedMessage("FirstConsole  :%p|Fallout4.exe+0x%08X", FirstConsole.ptr, FirstConsole.r32);
 			pirlog.FormattedMessage("FirstObScript :%p|Fallout4.exe+0x%08X", FirstObScript.ptr, FirstObScript.r32);
+			pirlog.FormattedMessage("GetConsoleArg :%p|Fallout4.exe+0x%08X", GetConsoleArg.ptr, GetConsoleArg.r32);
 			pirlog.FormattedMessage("GetScale      :%p|Fallout4.exe+0x%08X", ScaleFuncs.getpattern, ScaleFuncs.g32);
 			pirlog.FormattedMessage("SetScale      :%p|Fallout4.exe+0x%08X", ScaleFuncs.setpattern, ScaleFuncs.s32);
 			pirlog.FormattedMessage("SetMotionType :%p|Fallout4.exe+0x%08X", SetMotionType.ptr, SetMotionType.r32);
 			pirlog.FormattedMessage("PlayFileSound :%p|Fallout4.exe+0x%08X", PlaySounds.Filepattern, PlaySounds.File_r32);
 			pirlog.FormattedMessage("PlayUISound   :%p|Fallout4.exe+0x%08X", PlaySounds.UIpattern, PlaySounds.UI_r32);
-			pirlog.FormattedMessage("WSMode        :%p|Fallout4.exe+0x%08X|%p", WSMode.ptr, WSMode.r32, WSMode.addr);
-			pirlog.FormattedMessage("CurrentWSRef  :%p|Fallout4.exe+0x%08X|%p", CurrentWSRef.ptr, CurrentWSRef.r32, CurrentWSRef.addr);
-			pirlog.FormattedMessage("GConsole      :%p|Fallout4.exe+0x%08X|%p", gConsole.ptr, gConsole.r32, gConsole.addr);
-			pirlog.FormattedMessage("GetConsoleArg :%p|Fallout4.exe+0x%08X|%p", GetConsoleArg.ptr, GetConsoleArg.r32, GetConsoleArg_Native);
-			pirlog.FormattedMessage("WSSize|Floats :%p|%p", WSSize.ptr, WSSize.addr);
+			pirlog.FormattedMessage("WSMode        :%p|Fallout4.exe+0x%08X", WSMode.ptr, WSMode.r32);
+			pirlog.FormattedMessage("CurrentWSRef  :%p|Fallout4.exe+0x%08X", CurrentWSRef.ptr, CurrentWSRef.r32);
+			pirlog.FormattedMessage("GConsole      :%p|Fallout4.exe+0x%08X", gConsole.ptr, gConsole.r32);
+			pirlog.FormattedMessage("WSSize        :%p|Fallout4.exe+0x%08X", WSSize.ptr, (uintptr_t)WSSize.ptr - RelocationManager::s_baseAddr);
+			pirlog.FormattedMessage("WSFloats      :%p|Fallout4.exe+0x%08X", WSSize.addr, WSSize.addr - RelocationManager::s_baseAddr);
 			pirlog.FormattedMessage("Rotate        :%p|%p|orig %f|slow %f", Rotate.ptr, Rotate.addr, settings.fOriginalROTATE, settings.fSlowerROTATE);
 			pirlog.FormattedMessage("Zoom          :%p|%p|orig %f|slow %f", Zoom.ptr, Zoom.addr, settings.fOriginalZOOM, settings.fSlowerZOOM);
 			pirlog.FormattedMessage("----------------------------------------------------------------------------");
 		}
 
 		//read the ini and toggle default settings
-		static void ReadINIDefaults()
+		static void ReadINI()
 		{
 			PIR_LOG_PREP
 				pirlog.FormattedMessage("[%s] Reading and toggling default options.", thisfunc);
@@ -922,7 +952,7 @@ extern "C" {
 			//[Main] ACHIEVEMENTS_ENABLED
 			if (SETTING07 == "1") { pir::Toggle_Achievements(); }
 			//[Main] ConsoleNameRef_ENABLED
-			if (SETTING08 == "1") { pir::Toggle_ConsoleRefName(); }
+			if (SETTING08 == "1") { pir::Toggle_CNameRef(); }
 			//[Main] PrintConsoleMessages
 			if (SETTING09 == "0") { settings.PrintConsoleMessages = 0; }
 			//[Main] fSlowerROTATE
@@ -1140,6 +1170,9 @@ extern "C" {
 				PlaySounds.File_func = PlayFileSound_Native;
 			}
 		}
+
+
+
 	}
 
 
@@ -1157,7 +1190,7 @@ extern "C" {
 		pir::InitPIR();
 
 		if (!pir::FoundPatterns()) {
-			pir::LogMemoryPatterns();
+			pir::LogPatterns();
 			return false;
 		}
 
@@ -1167,11 +1200,11 @@ extern "C" {
 		}
 
 		// toggle defaults
-		pir::ReadINIDefaults();
+		pir::ReadINI();
 
 		// plugin loaded
 		pirlog.FormattedMessage("[%s] Plugin load finished!", thisfunc);
-		pir::LogMemoryPatterns();
+		pir::LogPatterns();
 		return true;
 	}
 
@@ -1184,6 +1217,7 @@ extern "C" {
 		0,
 		0,
 		{	RUNTIME_VERSION_1_10_980, 1,
+			RUNTIME_VERSION_1_11_137, 1,
 			RUNTIME_VERSION_1_10_984, 1
 		},
 		0,
