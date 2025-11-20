@@ -13,9 +13,9 @@
 static IDebugLog               pirlog;
 static UInt32                  pluginVersion = 10;
 //static const char*             pluginLogFile = { "\\My Games\\Fallout4\\F4SE\\PlaceInRed.log" };
+//static std::string             pluginINI = "Data\\F4SE\\Plugins\\PlaceInRed.ini";
 static constexpr const char* pluginLogFile = "\\\\My Games\\\\Fallout4\\\\F4SE\\\\PlaceInRed.log";
 static constexpr const char* pluginINI = "\\\\Data\\\\F4SE\\\\Plugins\\\\PlaceInRed.ini";
-//static std::string             pluginINI = "Data\\F4SE\\Plugins\\PlaceInRed.ini";
 static PluginHandle            pirPluginHandle = kPluginHandle_Invalid;
 static F4SEPapyrusInterface*   g_papyrus = nullptr;
 static F4SEMessagingInterface* g_messaging = nullptr;
