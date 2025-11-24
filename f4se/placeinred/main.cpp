@@ -21,6 +21,7 @@ static _SetMotionType_Native SetMotionType_Native = nullptr;
 static _GetConsoleArg_Native GetConsoleArg_Native = nullptr;
 
 namespace pir {
+
 	// return the ini path as a std string
 	static const std::string& GetPluginINIPath()
 	{
@@ -44,13 +45,47 @@ namespace pir {
 		const std::string& configPath = GetPluginINIPath();
 		if (!configPath.empty())
 		{
-			char resultBuf[2048];
+			char resultBuf[2048]{};
 			resultBuf[0] = 0;
 			UInt32 resultLen = GetPrivateProfileString(section, key, NULL, resultBuf, sizeof(resultBuf), configPath.c_str());
 			result = resultBuf;
 		}
 		return result;
 	}
+
+	// grok generated - bool parser
+	static bool StringToBool(const std::string& s, bool defaultValue = false)
+	{
+		std::string lower;
+		lower.reserve(s.size());
+		for (char c : s) lower += std::tolower(c);
+
+		// Trim whitespace
+		const auto start = lower.find_first_not_of(" \t\r\n");
+		if (start == std::string::npos) return defaultValue;
+		const auto end = lower.find_last_not_of(" \t\r\n");
+		const std::string trimmed = lower.substr(start, end - start + 1);
+
+		if (trimmed == "1" || trimmed == "true" || trimmed == "yes" || trimmed == "on")
+			return true;
+		if (trimmed == "0" || trimmed == "false" || trimmed == "no" || trimmed == "off")
+			return false;
+
+		return defaultValue;
+	}
+
+	// grok generated - GetPrivateProfileString with a tiny helper wrapper
+	static std::string GetINIString(const char* section, const char* key, const char* defaultValue = "")
+	{
+		const std::string& iniPath = pir::GetPluginINIPath();
+		if (iniPath.empty()) return defaultValue;
+
+		char buffer[256] = {};
+		GetPrivateProfileString(section, key, defaultValue, buffer, sizeof(buffer), iniPath.c_str());
+		return buffer;
+	}
+
+
 }
 
 extern "C" {
@@ -94,31 +129,23 @@ extern "C" {
 		}
 
 		// return the same char array with '\r' '\n' and '|' removed
-		//static char* StripNewLinesAndPipes(const char* str) {
-		//	size_t len = strlen(str);
-		//	char* newStr = new char[len + 1]; // Allocate memory for the new string
-		//
-		//	const char* src = str;
-		//	char* dst = newStr;
-		//
-		//	while (*src) {
-		//		if ((*src != '\n') && (*src != 0x7C) && (*src != '\r'))
-		//		{
-		//			*dst++ = *src;
-		//		}
-		//		src++;
-		//	}
-		//	*dst = '\0'; // Null-terminate the result string
-		//
-		//	return newStr;
-		//}
-
-		char* StripNewLinesAndPipes(const char* str) {
-			std::string cleaned;
-			for (; *str; ++str)
-				if (*str != '\n' && *str != '|' && *str != '\r')
-					cleaned += *str;
-			return _strdup(cleaned.c_str()); // or return std::string
+		static char* StripNewLinesAndPipes(const char* str) {
+			size_t len = strlen(str);
+			char* newStr = new char[len + 1]; // Allocate memory for the new string
+		
+			const char* src = str;
+			char* dst = newStr;
+		
+			while (*src) {
+				if ((*src != '\n') && (*src != 0x7C) && (*src != '\r'))
+				{
+					*dst++ = *src;
+				}
+				src++;
+			}
+			*dst = '\0'; // Null-terminate the result string
+		
+			return newStr;
 		}
 
 		// Simple function to read memory (credit reg2k).
@@ -409,6 +436,7 @@ extern "C" {
 		}
 
 		//dump all console and obscript commands to the log file
+		//buggy and crashes. needs redone
 		static bool DumpCmds()
 		{
 			PIR_LOG_PREP
@@ -420,7 +448,7 @@ extern "C" {
 			pirlog.FormattedMessage("---------------------------------------------------------");
 			pirlog.FormattedMessage("Type|opcode|rel32|address|short|long|params|needsparent|helptext");
 
-			for (ObScriptCommand* iter = FirstConsole.cmd; iter->opcode < (kObScript_NumConsoleCommands + kObScript_ConsoleOpBase); ++iter) {
+			for (ObScriptCommand* iter = FirstConsole.cmd; iter->opcode < (0x20B + kObScript_ConsoleOpBase); ++iter) {
 				if (iter) {
 					uintptr_t exeaddr = (uintptr_t) & (iter->execute);
 					uint64_t* funcptr = (uint64_t*)(exeaddr);
@@ -433,7 +461,7 @@ extern "C" {
 				}
 			}
 
-			for (ObScriptCommand* iter = FirstObScript.cmd; iter->opcode < (kObScript_NumObScriptCommands + kObScript_ScriptOpBase); ++iter) {
+			for (ObScriptCommand* iter = FirstObScript.cmd; iter->opcode < (0x0332 + kObScript_ScriptOpBase); ++iter) {
 				if (iter) {
 					uintptr_t exeaddr = (uintptr_t) & (iter->execute);
 					uint64_t* funcptr = (uint64_t*)(exeaddr);
@@ -725,15 +753,15 @@ extern "C" {
 
 					if (consoleresult && param1[0]) {
 						switch (ConsoleSwitch(param1)) {
-							// debug and tests
-						case pir::ConsoleSwitch("dumprefs"):     pir::DumpCellRefs();                 break;
-						case pir::ConsoleSwitch("dumpcmds"):     pir::DumpCmds();                     break;
-						case pir::ConsoleSwitch("logref"):       pir::LogWSRef();                     break;
+						// debug and tests
+						case pir::ConsoleSwitch("dumprefs"):     pir::DumpCellRefs();         break;
+						case pir::ConsoleSwitch("dumpcmds"):     pir::DumpCmds();           break;
+						case pir::ConsoleSwitch("logref"):       pir::LogWSRef();             break;
 						case pir::ConsoleSwitch("print"):        pir::Toggle_ConsolePrint();  break;
-						case pir::ConsoleSwitch("sound"):        pir::PlayFileSound(param2);          break;
-						case pir::ConsoleSwitch("uisound"):      pir::PlayUISound(param2);            break;
+						case pir::ConsoleSwitch("sound"):        pir::PlayFileSound(param2);  break;
+						case pir::ConsoleSwitch("uisound"):      pir::PlayUISound(param2);    break;
 
-							//toggles
+						//toggles
 						case pir::ConsoleSwitch("1"):            pir::Toggle_PlaceInRed();         break;
 						case pir::ConsoleSwitch("toggle"):       pir::Toggle_PlaceInRed();         break;
 						case pir::ConsoleSwitch("2"):            pir::Toggle_ObjectSnap();         break;
@@ -749,11 +777,11 @@ extern "C" {
 						case pir::ConsoleSwitch("7"):            pir::Toggle_Achievements();       break;
 						case pir::ConsoleSwitch("achievements"): pir::Toggle_Achievements();       break;
 
-							//scale constants
+						//scale constants
 						case pir::ConsoleSwitch("scale1"):       pir::SetCurrentRefScale(1.0000f); break;
 						case pir::ConsoleSwitch("scale10"):      pir::SetCurrentRefScale(9.9999f); break;
 
-							//scale up							  				     
+						//scale up							  				     
 						case pir::ConsoleSwitch("scaleup1"):	 pir::ModCurrentRefScale(1.0100f); break;
 						case pir::ConsoleSwitch("scaleup2"):	 pir::ModCurrentRefScale(1.0200f); break;
 						case pir::ConsoleSwitch("scaleup5"):	 pir::ModCurrentRefScale(1.0500f); break;
@@ -762,7 +790,7 @@ extern "C" {
 						case pir::ConsoleSwitch("scaleup50"):	 pir::ModCurrentRefScale(1.5000f); break;
 						case pir::ConsoleSwitch("scaleup100"):	 pir::ModCurrentRefScale(2.0000f); break;
 
-							//scale down			   			  				        			 
+						//scale down			   			  				        			 
 						case pir::ConsoleSwitch("scaledown1"):	 pir::ModCurrentRefScale(0.9900f); break;
 						case pir::ConsoleSwitch("scaledown2"):	 pir::ModCurrentRefScale(0.9800f); break;
 						case pir::ConsoleSwitch("scaledown5"):	 pir::ModCurrentRefScale(0.9500f); break;
@@ -771,7 +799,7 @@ extern "C" {
 						case pir::ConsoleSwitch("scaledown50"):  pir::ModCurrentRefScale(0.5000f); break;
 						case pir::ConsoleSwitch("scaledown75"):	 pir::ModCurrentRefScale(0.2500f); break;
 
-							// lock and unlock
+						// lock and unlock
 						case pir::ConsoleSwitch("lock"):         pir::LockUnlockWSRef(0, 1); break;
 						case pir::ConsoleSwitch("l"):            pir::LockUnlockWSRef(0, 1); break;
 						case pir::ConsoleSwitch("lockq"):        pir::LockUnlockWSRef(0, 0); break;
@@ -779,15 +807,13 @@ extern "C" {
 						case pir::ConsoleSwitch("u"):            pir::LockUnlockWSRef(1, 0); break;
 
 
-							// console name ref toggle
+						// console name ref toggle
 						case pir::ConsoleSwitch("cnref"):        pir::Toggle_CNameRef(); break;
 
 
-							// show help
+						// show help
 						case pir::ConsoleSwitch("?"):            pir::ConsolePrint(ConsoleHelpMSG); break;
 						case pir::ConsoleSwitch("help"):         pir::ConsolePrint(ConsoleHelpMSG); break;
-
-							// scale
 
 						default: pir::ConsolePrint(ConsoleHelpMSG);  break;
 						}
@@ -921,65 +947,153 @@ extern "C" {
 		}
 
 		//read the ini and toggle default settings
+		//static void ReadINI()
+		//{
+		//	PIR_LOG_PREP
+		//		pirlog.FormattedMessage("[%s] Reading and toggling default options.", thisfunc);
+		//
+		//	// store the setting as a string
+		//	std::string SETTING01 = GetPIRConfigOption("Main", "PLACEINRED_ENABLED");
+		//	std::string SETTING02 = GetPIRConfigOption("Main", "OBJECTSNAP_ENABLED");
+		//	std::string SETTING03 = GetPIRConfigOption("Main", "GROUNDSNAP_ENABLED");
+		//	std::string SETTING04 = GetPIRConfigOption("Main", "SLOW_ENABLED");
+		//	std::string SETTING05 = GetPIRConfigOption("Main", "WORKSHOPSIZE_ENABLED");
+		//	std::string SETTING06 = GetPIRConfigOption("Main", "OUTLINES_ENABLED");
+		//	std::string SETTING07 = GetPIRConfigOption("Main", "ACHIEVEMENTS_ENABLED");
+		//	std::string SETTING08 = GetPIRConfigOption("Main", "ConsoleNameRef_ENABLED");
+		//	std::string SETTING09 = GetPIRConfigOption("Main", "PrintConsoleMessages");
+		//	std::string SETTING10 = GetPIRConfigOption("Main", "fSlowerROTATE");
+		//	std::string SETTING11 = GetPIRConfigOption("Main", "fSlowerZOOM");
+		//
+		//	//[Main] PLACEINRED_ENABLED
+		//	if (SETTING01 == "1") { pir::Toggle_PlaceInRed(); }
+		//	//[Main] OBJECTSNAP_ENABLED
+		//	if (SETTING02 == "0") { pir::Toggle_ObjectSnap(); }
+		//	//[Main] GROUNDSNAP_ENABLED
+		//	if (SETTING03 == "0") { pir::Toggle_GroundSnap(); }
+		//	//[Main] WORKSHOPSIZE_ENABLED
+		//	if (SETTING05 == "1") { pir::Toggle_WorkshopSize(); }
+		//	//[Main] OUTLINES_ENABLED
+		//	if (SETTING06 == "0") { pir::Toggle_Outlines(); }
+		//	//[Main] ACHIEVEMENTS_ENABLED
+		//	if (SETTING07 == "1") { pir::Toggle_Achievements(); }
+		//	//[Main] ConsoleNameRef_ENABLED
+		//	if (SETTING08 == "1") { pir::Toggle_CNameRef(); }
+		//	//[Main] PrintConsoleMessages
+		//	if (SETTING09 == "0") { settings.PrintConsoleMessages = 0; }
+		//	//[Main] fSlowerROTATE
+		//	if (!SETTING10.empty()) {
+		//		Float32 rTemp = FloatFromString(SETTING10);
+		//		if (rTemp == 0) {
+		//			settings.fSlowerROTATE = 0.5; //bad ini force plugin default
+		//			pirlog.FormattedMessage("[INI] fSlowerROTATE: invalid. Using 0.5");
+		//		}
+		//		else {
+		//			settings.fSlowerROTATE = rTemp;
+		//		}
+		//	}
+		//	//[Main] fSlowerZOOM
+		//	if (!SETTING11.empty()) {
+		//		Float32 zTemp = FloatFromString(SETTING11);
+		//		if (zTemp == 0) {
+		//			settings.fSlowerZOOM = 1.0; // bad ini force plugin default
+		//			pirlog.FormattedMessage("[INI] fSlowerZOOM: invalid. Using 1.0");
+		//		}
+		//		else {
+		//			settings.fSlowerZOOM = zTemp;
+		//		}
+		//	}
+		//	// toggle this one AFTER reading the ini setting
+		//	if (SETTING04 == "1") { pir::Toggle_SlowZoomAndRotate(); }
+		//
+		//}
+
+		//grok generated - ini reader v2
 		static void ReadINI()
 		{
 			PIR_LOG_PREP
-				pirlog.FormattedMessage("[%s] Reading and toggling default options.", thisfunc);
+			pirlog.FormattedMessage("[%s] Reading PlaceInRed.ini settings...", thisfunc);
 
-			// store the setting as a string
-			std::string SETTING01 = GetPIRConfigOption("Main", "PLACEINRED_ENABLED");
-			std::string SETTING02 = GetPIRConfigOption("Main", "OBJECTSNAP_ENABLED");
-			std::string SETTING03 = GetPIRConfigOption("Main", "GROUNDSNAP_ENABLED");
-			std::string SETTING04 = GetPIRConfigOption("Main", "SLOW_ENABLED");
-			std::string SETTING05 = GetPIRConfigOption("Main", "WORKSHOPSIZE_ENABLED");
-			std::string SETTING06 = GetPIRConfigOption("Main", "OUTLINES_ENABLED");
-			std::string SETTING07 = GetPIRConfigOption("Main", "ACHIEVEMENTS_ENABLED");
-			std::string SETTING08 = GetPIRConfigOption("Main", "ConsoleNameRef_ENABLED");
-			std::string SETTING09 = GetPIRConfigOption("Main", "PrintConsoleMessages");
-			std::string SETTING10 = GetPIRConfigOption("Main", "fSlowerROTATE");
-			std::string SETTING11 = GetPIRConfigOption("Main", "fSlowerZOOM");
+			const char* section = "Main";
 
-			//[Main] PLACEINRED_ENABLED
-			if (SETTING01 == "1") { pir::Toggle_PlaceInRed(); }
-			//[Main] OBJECTSNAP_ENABLED
-			if (SETTING02 == "0") { pir::Toggle_ObjectSnap(); }
-			//[Main] GROUNDSNAP_ENABLED
-			if (SETTING03 == "0") { pir::Toggle_GroundSnap(); }
-			//[Main] WORKSHOPSIZE_ENABLED
-			if (SETTING05 == "1") { pir::Toggle_WorkshopSize(); }
-			//[Main] OUTLINES_ENABLED
-			if (SETTING06 == "0") { pir::Toggle_Outlines(); }
-			//[Main] ACHIEVEMENTS_ENABLED
-			if (SETTING07 == "1") { pir::Toggle_Achievements(); }
-			//[Main] ConsoleNameRef_ENABLED
-			if (SETTING08 == "1") { pir::Toggle_CNameRef(); }
-			//[Main] PrintConsoleMessages
-			if (SETTING09 == "0") { settings.PrintConsoleMessages = 0; }
-			//[Main] fSlowerROTATE
-			if (!SETTING10.empty()) {
-				Float32 rTemp = FloatFromString(SETTING10);
-				if (rTemp == 0) {
-					settings.fSlowerROTATE = 0.5; //bad ini force plugin default
-					pirlog.FormattedMessage("[INI] fSlowerROTATE: invalid. Using 0.5");
-				}
-				else {
-					settings.fSlowerROTATE = rTemp;
+			// Helper lambda for the majority of toggle settings
+			auto ApplyToggle = [&](const char* key, bool& currentFlag, auto toggleFunc, bool defaultEnabled)
+				{
+					std::string val = GetINIString(section, key);
+					bool wantEnabled = StringToBool(val, defaultEnabled);
+
+					if (wantEnabled != currentFlag)
+					{
+						toggleFunc();   // this flips the flag and applies the patch
+						pirlog.FormattedMessage("[INI] %s = %d (toggled)", key, wantEnabled);
+					}
+					else if (!val.empty())
+					{
+						pirlog.FormattedMessage("[INI] %s = %d (no change)", key, wantEnabled);
+					}
+				};
+
+			// ------------------- Boolean toggles -------------------
+			ApplyToggle("PLACEINRED_ENABLED", settings.PLACEINRED_ENABLED, pir::Toggle_PlaceInRed, false);
+			ApplyToggle("OBJECTSNAP_ENABLED", settings.OBJECTSNAP_ENABLED, pir::Toggle_ObjectSnap, true);
+			ApplyToggle("GROUNDSNAP_ENABLED", settings.GROUNDSNAP_ENABLED, pir::Toggle_GroundSnap, true);
+			ApplyToggle("WORKSHOPSIZE_ENABLED", settings.WORKSHOPSIZE_ENABLED, pir::Toggle_WorkshopSize, false);
+			ApplyToggle("OUTLINES_ENABLED", settings.OUTLINES_ENABLED, pir::Toggle_Outlines, true);
+			ApplyToggle("ACHIEVEMENTS_ENABLED", settings.ACHIEVEMENTS_ENABLED, pir::Toggle_Achievements, false);
+			ApplyToggle("ConsoleNameRef_ENABLED", settings.ConsoleNameRef_ENABLED, pir::Toggle_CNameRef, false);
+
+			// ------------------- PrintConsoleMessages -------------------
+			{
+				std::string val = GetINIString(section, "PrintConsoleMessages", "1");
+				bool want = StringToBool(val, true);
+				if (want != settings.PrintConsoleMessages)
+				{
+					settings.PrintConsoleMessages = want;
+					pirlog.FormattedMessage("[INI] PrintConsoleMessages = %d", want);
 				}
 			}
-			//[Main] fSlowerZOOM
-			if (!SETTING11.empty()) {
-				Float32 zTemp = FloatFromString(SETTING11);
-				if (zTemp == 0) {
-					settings.fSlowerZOOM = 1.0; // bad ini force plugin default
-					pirlog.FormattedMessage("[INI] fSlowerZOOM: invalid. Using 1.0");
+
+			// ------------------- Custom slow speeds (must be read BEFORE the toggle) -------------------
+			{
+				std::string rotStr = GetINIString(section, "fSlowerROTATE");
+				if (!rotStr.empty())
+				{
+					float f = FloatFromString(rotStr, 0.01f, 50.0f, 0.0f);
+					if (f > 0.0f)
+						settings.fSlowerROTATE = f;
+					else
+					{
+						pirlog.FormattedMessage("[INI] fSlowerROTATE invalid, using default 0.5");
+						settings.fSlowerROTATE = 0.5f;
+					}
 				}
-				else {
-					settings.fSlowerZOOM = zTemp;
+
+				std::string zoomStr = GetINIString(section, "fSlowerZOOM");
+				if (!zoomStr.empty())
+				{
+					float f = FloatFromString(zoomStr, 0.01f, 50.0f, 0.0f);
+					if (f > 0.0f)
+						settings.fSlowerZOOM = f;
+					else
+					{
+						pirlog.FormattedMessage("[INI] fSlowerZOOM invalid, using default 1.0");
+						settings.fSlowerZOOM = 1.0f;
+					}
 				}
 			}
-			// toggle this one AFTER reading the ini setting
-			if (SETTING04 == "1") { pir::Toggle_SlowZoomAndRotate(); }
 
+			// ------------------- Slow zoom/rotate toggle (applies the speeds we just read) -------------------
+			{
+				std::string val = GetINIString(section, "SLOW_ENABLED");
+				bool wantSlow = StringToBool(val, false);
+				if (wantSlow != settings.SLOW_ENABLED)
+				{
+					pir::Toggle_SlowZoomAndRotate();
+					pirlog.FormattedMessage("[INI] SLOW_ENABLED = %d (applied custom speeds)", wantSlow);
+				}
+			}
+
+			pirlog.FormattedMessage("[%s] Finished reading INI.", thisfunc);
 		}
 
 		//init f4se stuff and return false if anything fails
@@ -1181,7 +1295,7 @@ extern "C" {
 		// start log
 		PIR_LOG_PREP
 			pirlog.OpenRelative(CSIDL_MYDOCUMENTS, pluginLogFile);
-		pirlog.FormattedMessage("[%s] Plugin loaded.", thisfunc);
+		pirlog.FormattedMessage("[%s] Plugin loaded. (version %i)", thisfunc, pluginVersion);
 
 		if (!pir::InitF4SE(f4se)) {
 			return false;
@@ -1216,12 +1330,11 @@ extern "C" {
 		"RandyConstan",
 		0,
 		0,
-		{	RUNTIME_VERSION_1_10_980, 1,
-			RUNTIME_VERSION_1_10_984, 1,
-			RUNTIME_VERSION_1_11_137, 1,
-			RUNTIME_VERSION_1_11_159, 1
+		{	RUNTIME_VERSION_1_11_159, 1
 		},
 		0,
 	};
+
+
 
 }

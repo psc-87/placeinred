@@ -4,18 +4,16 @@
 #include "shlobj.h"
 #include "pattern.h"
 #include "f4se.h"
-#include <string.h>
+//#include <string.h>
 
 // macros
 #define PIR_LOG_PREP const char* thisfunc = __func__;
 
 // f4se plugin
 static IDebugLog               pirlog;
-static UInt32                  pluginVersion = 10;
-//static const char*             pluginLogFile = { "\\My Games\\Fallout4\\F4SE\\PlaceInRed.log" };
-//static std::string             pluginINI = "Data\\F4SE\\Plugins\\PlaceInRed.ini";
-static constexpr const char* pluginLogFile = "\\\\My Games\\\\Fallout4\\\\F4SE\\\\PlaceInRed.log";
-static constexpr const char* pluginINI = "\\\\Data\\\\F4SE\\\\Plugins\\\\PlaceInRed.ini";
+static UInt32                  pluginVersion = 11;
+static const char*             pluginLogFile = { "\\My Games\\Fallout4\\F4SE\\PlaceInRed.log" };
+static std::string             pluginINI = "Data\\F4SE\\Plugins\\PlaceInRed.ini";
 static PluginHandle            pirPluginHandle = kPluginHandle_Invalid;
 static F4SEPapyrusInterface*   g_papyrus = nullptr;
 static F4SEMessagingInterface* g_messaging = nullptr;
@@ -156,8 +154,6 @@ struct _CNameRef
 
 
 /* helpful notes
-
-
   interesting bytes starting at bWSMode (Fallout4.exe+2E74994)
 
 example               01      00        ??   00  00        ??     00      ?? ??    01  01       01
@@ -165,9 +161,6 @@ label                 bwsmode holdingE       zerochecks           exitws        
 
 Fallout4.exe+2E749??  94      95        96   97  98        99     9A      9B 9C    9D  9E       0x9F
 bwsmode offset        +0      +1        +2   +3  +4        +5     +6      +7 +8    +9  +A       +B
-
-
-
 */
 
 
