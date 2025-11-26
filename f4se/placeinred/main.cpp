@@ -745,83 +745,82 @@ extern "C" {
 		static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, double* result, void* opcodeOffsetPtr)
 		{
 			PIR_LOG_PREP
-				if (GetConsoleArg_Native && GetConsoleArg.ptr && (GetConsoleArg.r32 != 0)) {
+			if (GetConsoleArg_Native && GetConsoleArg.ptr && (GetConsoleArg.r32 != 0)) {
+				char param1[4096];
+				char param2[4096];
+				bool consoleresult = GetConsoleArg_Native(paramInfo, scriptData, opcodeOffsetPtr, thisObj, containingObj, scriptObj, locals, &param1, &param2);
 
-					char param1[4096];
-					char param2[4096];
-					bool consoleresult = GetConsoleArg_Native(paramInfo, scriptData, opcodeOffsetPtr, thisObj, containingObj, scriptObj, locals, &param1, &param2);
+				if (consoleresult && param1[0]) {
+					switch (ConsoleSwitch(param1)) {
+					// debug and tests
+					case pir::ConsoleSwitch("dumprefs"):     pir::DumpCellRefs();         break;
+					case pir::ConsoleSwitch("dumpcmds"):     pir::DumpCmds();             break;
+					case pir::ConsoleSwitch("logref"):       pir::LogWSRef();             break;
+					case pir::ConsoleSwitch("print"):        pir::Toggle_ConsolePrint();  break;
+					case pir::ConsoleSwitch("sound"):        pir::PlayFileSound(param2);  break;
+					case pir::ConsoleSwitch("uisound"):      pir::PlayUISound(param2);    break;
 
-					if (consoleresult && param1[0]) {
-						switch (ConsoleSwitch(param1)) {
-						// debug and tests
-						case pir::ConsoleSwitch("dumprefs"):     pir::DumpCellRefs();         break;
-						case pir::ConsoleSwitch("dumpcmds"):     pir::DumpCmds();           break;
-						case pir::ConsoleSwitch("logref"):       pir::LogWSRef();             break;
-						case pir::ConsoleSwitch("print"):        pir::Toggle_ConsolePrint();  break;
-						case pir::ConsoleSwitch("sound"):        pir::PlayFileSound(param2);  break;
-						case pir::ConsoleSwitch("uisound"):      pir::PlayUISound(param2);    break;
+					//toggles
+					case pir::ConsoleSwitch("1"):            pir::Toggle_PlaceInRed();         break;
+					case pir::ConsoleSwitch("toggle"):       pir::Toggle_PlaceInRed();         break;
+					case pir::ConsoleSwitch("2"):            pir::Toggle_ObjectSnap();         break;
+					case pir::ConsoleSwitch("osnap"):        pir::Toggle_ObjectSnap();         break;
+					case pir::ConsoleSwitch("3"):            pir::Toggle_GroundSnap();         break;
+					case pir::ConsoleSwitch("gsnap"):        pir::Toggle_GroundSnap();         break;
+					case pir::ConsoleSwitch("4"):            pir::Toggle_SlowZoomAndRotate();  break;
+					case pir::ConsoleSwitch("slow"):         pir::Toggle_SlowZoomAndRotate();  break;
+					case pir::ConsoleSwitch("5"):            pir::Toggle_WorkshopSize();       break;
+					case pir::ConsoleSwitch("workshopsize"): pir::Toggle_WorkshopSize();       break;
+					case pir::ConsoleSwitch("6"):            pir::Toggle_Outlines();           break;
+					case pir::ConsoleSwitch("outlines"):     pir::Toggle_Outlines();           break;
+					case pir::ConsoleSwitch("7"):            pir::Toggle_Achievements();       break;
+					case pir::ConsoleSwitch("achievements"): pir::Toggle_Achievements();       break;
 
-						//toggles
-						case pir::ConsoleSwitch("1"):            pir::Toggle_PlaceInRed();         break;
-						case pir::ConsoleSwitch("toggle"):       pir::Toggle_PlaceInRed();         break;
-						case pir::ConsoleSwitch("2"):            pir::Toggle_ObjectSnap();         break;
-						case pir::ConsoleSwitch("osnap"):        pir::Toggle_ObjectSnap();         break;
-						case pir::ConsoleSwitch("3"):            pir::Toggle_GroundSnap();         break;
-						case pir::ConsoleSwitch("gsnap"):        pir::Toggle_GroundSnap();         break;
-						case pir::ConsoleSwitch("4"):            pir::Toggle_SlowZoomAndRotate();  break;
-						case pir::ConsoleSwitch("slow"):         pir::Toggle_SlowZoomAndRotate();  break;
-						case pir::ConsoleSwitch("5"):            pir::Toggle_WorkshopSize();       break;
-						case pir::ConsoleSwitch("workshopsize"): pir::Toggle_WorkshopSize();       break;
-						case pir::ConsoleSwitch("6"):            pir::Toggle_Outlines();           break;
-						case pir::ConsoleSwitch("outlines"):     pir::Toggle_Outlines();           break;
-						case pir::ConsoleSwitch("7"):            pir::Toggle_Achievements();       break;
-						case pir::ConsoleSwitch("achievements"): pir::Toggle_Achievements();       break;
+					//scale constants
+					case pir::ConsoleSwitch("scale1"):       pir::SetCurrentRefScale(1.0000f); break;
+					case pir::ConsoleSwitch("scale10"):      pir::SetCurrentRefScale(9.9999f); break;
 
-						//scale constants
-						case pir::ConsoleSwitch("scale1"):       pir::SetCurrentRefScale(1.0000f); break;
-						case pir::ConsoleSwitch("scale10"):      pir::SetCurrentRefScale(9.9999f); break;
+					//scale up							  				     
+					case pir::ConsoleSwitch("scaleup1"):	 pir::ModCurrentRefScale(1.0100f); break;
+					case pir::ConsoleSwitch("scaleup2"):	 pir::ModCurrentRefScale(1.0200f); break;
+					case pir::ConsoleSwitch("scaleup5"):	 pir::ModCurrentRefScale(1.0500f); break;
+					case pir::ConsoleSwitch("scaleup10"):	 pir::ModCurrentRefScale(1.1000f); break;
+					case pir::ConsoleSwitch("scaleup25"):	 pir::ModCurrentRefScale(1.2500f); break;
+					case pir::ConsoleSwitch("scaleup50"):	 pir::ModCurrentRefScale(1.5000f); break;
+					case pir::ConsoleSwitch("scaleup100"):	 pir::ModCurrentRefScale(2.0000f); break;
 
-						//scale up							  				     
-						case pir::ConsoleSwitch("scaleup1"):	 pir::ModCurrentRefScale(1.0100f); break;
-						case pir::ConsoleSwitch("scaleup2"):	 pir::ModCurrentRefScale(1.0200f); break;
-						case pir::ConsoleSwitch("scaleup5"):	 pir::ModCurrentRefScale(1.0500f); break;
-						case pir::ConsoleSwitch("scaleup10"):	 pir::ModCurrentRefScale(1.1000f); break;
-						case pir::ConsoleSwitch("scaleup25"):	 pir::ModCurrentRefScale(1.2500f); break;
-						case pir::ConsoleSwitch("scaleup50"):	 pir::ModCurrentRefScale(1.5000f); break;
-						case pir::ConsoleSwitch("scaleup100"):	 pir::ModCurrentRefScale(2.0000f); break;
+					//scale down			   			  				        			 
+					case pir::ConsoleSwitch("scaledown1"):	 pir::ModCurrentRefScale(0.9900f); break;
+					case pir::ConsoleSwitch("scaledown2"):	 pir::ModCurrentRefScale(0.9800f); break;
+					case pir::ConsoleSwitch("scaledown5"):	 pir::ModCurrentRefScale(0.9500f); break;
+					case pir::ConsoleSwitch("scaledown10"):  pir::ModCurrentRefScale(0.9000f); break;
+					case pir::ConsoleSwitch("scaledown25"):  pir::ModCurrentRefScale(0.7500f); break;
+					case pir::ConsoleSwitch("scaledown50"):  pir::ModCurrentRefScale(0.5000f); break;
+					case pir::ConsoleSwitch("scaledown75"):	 pir::ModCurrentRefScale(0.2500f); break;
 
-						//scale down			   			  				        			 
-						case pir::ConsoleSwitch("scaledown1"):	 pir::ModCurrentRefScale(0.9900f); break;
-						case pir::ConsoleSwitch("scaledown2"):	 pir::ModCurrentRefScale(0.9800f); break;
-						case pir::ConsoleSwitch("scaledown5"):	 pir::ModCurrentRefScale(0.9500f); break;
-						case pir::ConsoleSwitch("scaledown10"):  pir::ModCurrentRefScale(0.9000f); break;
-						case pir::ConsoleSwitch("scaledown25"):  pir::ModCurrentRefScale(0.7500f); break;
-						case pir::ConsoleSwitch("scaledown50"):  pir::ModCurrentRefScale(0.5000f); break;
-						case pir::ConsoleSwitch("scaledown75"):	 pir::ModCurrentRefScale(0.2500f); break;
-
-						// lock and unlock
-						case pir::ConsoleSwitch("lock"):         pir::LockUnlockWSRef(0, 1); break;
-						case pir::ConsoleSwitch("l"):            pir::LockUnlockWSRef(0, 1); break;
-						case pir::ConsoleSwitch("lockq"):        pir::LockUnlockWSRef(0, 0); break;
-						case pir::ConsoleSwitch("unlock"):       pir::LockUnlockWSRef(1, 0); break;
-						case pir::ConsoleSwitch("u"):            pir::LockUnlockWSRef(1, 0); break;
-
-
-						// console name ref toggle
-						case pir::ConsoleSwitch("cnref"):        pir::Toggle_CNameRef(); break;
+					// lock and unlock
+					case pir::ConsoleSwitch("lock"):         pir::LockUnlockWSRef(0, 1); break;
+					case pir::ConsoleSwitch("l"):            pir::LockUnlockWSRef(0, 1); break;
+					case pir::ConsoleSwitch("lockq"):        pir::LockUnlockWSRef(0, 0); break;
+					case pir::ConsoleSwitch("unlock"):       pir::LockUnlockWSRef(1, 0); break;
+					case pir::ConsoleSwitch("u"):            pir::LockUnlockWSRef(1, 0); break;
 
 
-						// show help
-						case pir::ConsoleSwitch("?"):            pir::ConsolePrint(ConsoleHelpMSG); break;
-						case pir::ConsoleSwitch("help"):         pir::ConsolePrint(ConsoleHelpMSG); break;
+					// console name ref toggle
+					case pir::ConsoleSwitch("cnref"):        pir::Toggle_CNameRef(); break;
 
-						default: pir::ConsolePrint(ConsoleHelpMSG);  break;
-						}
 
-						return true;
+					// show help
+					case pir::ConsoleSwitch("?"):            pir::ConsolePrint(ConsoleHelpMSG); break;
+					case pir::ConsoleSwitch("help"):         pir::ConsolePrint(ConsoleHelpMSG); break;
+
+					default: pir::ConsolePrint(ConsoleHelpMSG);  break;
 					}
 
+					return true;
 				}
+
+			}
 			pirlog.FormattedMessage("[%s] Failed to execute the console command!", thisfunc);
 			return false;
 		}
@@ -907,7 +906,6 @@ extern "C" {
 		//log all the memory patterns to the log file
 		static void LogPatterns()
 		{
-
 			pirlog.FormattedMessage("----------------------------------------------------------------------------");
 			pirlog.FormattedMessage("Base          :%p|Fallout4.exe+0x00000000", RelocationManager::s_baseAddr);
 			pirlog.FormattedMessage("achievements  :%p|Fallout4.exe+0x%08X", Pointers.achievements, (uintptr_t)Pointers.achievements - RelocationManager::s_baseAddr);
@@ -945,68 +943,6 @@ extern "C" {
 			pirlog.FormattedMessage("Zoom          :%p|%p|orig %f|slow %f", Zoom.ptr, Zoom.addr, settings.fOriginalZOOM, settings.fSlowerZOOM);
 			pirlog.FormattedMessage("----------------------------------------------------------------------------");
 		}
-
-		//read the ini and toggle default settings
-		//static void ReadINI()
-		//{
-		//	PIR_LOG_PREP
-		//		pirlog.FormattedMessage("[%s] Reading and toggling default options.", thisfunc);
-		//
-		//	// store the setting as a string
-		//	std::string SETTING01 = GetPIRConfigOption("Main", "PLACEINRED_ENABLED");
-		//	std::string SETTING02 = GetPIRConfigOption("Main", "OBJECTSNAP_ENABLED");
-		//	std::string SETTING03 = GetPIRConfigOption("Main", "GROUNDSNAP_ENABLED");
-		//	std::string SETTING04 = GetPIRConfigOption("Main", "SLOW_ENABLED");
-		//	std::string SETTING05 = GetPIRConfigOption("Main", "WORKSHOPSIZE_ENABLED");
-		//	std::string SETTING06 = GetPIRConfigOption("Main", "OUTLINES_ENABLED");
-		//	std::string SETTING07 = GetPIRConfigOption("Main", "ACHIEVEMENTS_ENABLED");
-		//	std::string SETTING08 = GetPIRConfigOption("Main", "ConsoleNameRef_ENABLED");
-		//	std::string SETTING09 = GetPIRConfigOption("Main", "PrintConsoleMessages");
-		//	std::string SETTING10 = GetPIRConfigOption("Main", "fSlowerROTATE");
-		//	std::string SETTING11 = GetPIRConfigOption("Main", "fSlowerZOOM");
-		//
-		//	//[Main] PLACEINRED_ENABLED
-		//	if (SETTING01 == "1") { pir::Toggle_PlaceInRed(); }
-		//	//[Main] OBJECTSNAP_ENABLED
-		//	if (SETTING02 == "0") { pir::Toggle_ObjectSnap(); }
-		//	//[Main] GROUNDSNAP_ENABLED
-		//	if (SETTING03 == "0") { pir::Toggle_GroundSnap(); }
-		//	//[Main] WORKSHOPSIZE_ENABLED
-		//	if (SETTING05 == "1") { pir::Toggle_WorkshopSize(); }
-		//	//[Main] OUTLINES_ENABLED
-		//	if (SETTING06 == "0") { pir::Toggle_Outlines(); }
-		//	//[Main] ACHIEVEMENTS_ENABLED
-		//	if (SETTING07 == "1") { pir::Toggle_Achievements(); }
-		//	//[Main] ConsoleNameRef_ENABLED
-		//	if (SETTING08 == "1") { pir::Toggle_CNameRef(); }
-		//	//[Main] PrintConsoleMessages
-		//	if (SETTING09 == "0") { settings.PrintConsoleMessages = 0; }
-		//	//[Main] fSlowerROTATE
-		//	if (!SETTING10.empty()) {
-		//		Float32 rTemp = FloatFromString(SETTING10);
-		//		if (rTemp == 0) {
-		//			settings.fSlowerROTATE = 0.5; //bad ini force plugin default
-		//			pirlog.FormattedMessage("[INI] fSlowerROTATE: invalid. Using 0.5");
-		//		}
-		//		else {
-		//			settings.fSlowerROTATE = rTemp;
-		//		}
-		//	}
-		//	//[Main] fSlowerZOOM
-		//	if (!SETTING11.empty()) {
-		//		Float32 zTemp = FloatFromString(SETTING11);
-		//		if (zTemp == 0) {
-		//			settings.fSlowerZOOM = 1.0; // bad ini force plugin default
-		//			pirlog.FormattedMessage("[INI] fSlowerZOOM: invalid. Using 1.0");
-		//		}
-		//		else {
-		//			settings.fSlowerZOOM = zTemp;
-		//		}
-		//	}
-		//	// toggle this one AFTER reading the ini setting
-		//	if (SETTING04 == "1") { pir::Toggle_SlowZoomAndRotate(); }
-		//
-		//}
 
 		//grok generated - ini reader v2
 		static void ReadINI()
@@ -1330,7 +1266,7 @@ extern "C" {
 		"RandyConstan",
 		0,
 		0,
-		{	RUNTIME_VERSION_1_11_159, 1
+		{	RUNTIME_VERSION_1_11_169, 1
 		},
 		0,
 	};

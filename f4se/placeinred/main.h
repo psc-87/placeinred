@@ -11,7 +11,7 @@
 
 // f4se plugin
 static IDebugLog               pirlog;
-static UInt32                  pluginVersion = 11;
+static UInt32                  pluginVersion = 12;
 static const char*             pluginLogFile = { "\\My Games\\Fallout4\\F4SE\\PlaceInRed.log" };
 static std::string             pluginINI = "Data\\F4SE\\Plugins\\PlaceInRed.ini";
 static PluginHandle            pirPluginHandle = kPluginHandle_Invalid;
