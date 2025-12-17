@@ -5,7 +5,6 @@
 #include "pattern.h"
 #include "f4se.h"
 #include <cmath>
-//#include <string.h>
 
 // macros
 #define PIR_LOG_PREP const char* thisfunc = __func__;

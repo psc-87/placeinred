@@ -5,7 +5,6 @@ static _PATCHES              Patches;
 static _POINTERS             Pointers;
 static _PlaySounds           PlaySounds;
 static _ScaleFuncs           ScaleFuncs;
-//static _AngleFunctions       AngleFunctions;
 static _CNameRef             CNameRef;
 static SimpleFinder          FirstConsole;
 static SimpleFinder          FirstObScript;
