@@ -5,6 +5,99 @@ some of it my own stuff
 */
 
 
+// dont even fucking ask
+
+		// Rotate a ref by delta degrees in X/Y/Z
+		static bool RotateRefByDegrees(float dXDeg, float dYDeg, float dZDeg)
+		{
+			PIR_LOG_PREP
+			TESObjectREFR* ref = GetCurrentWSRef();
+			if (!ref)
+				return false;
+
+			// Current worldspace transform
+			NiPoint3 pos = ref->pos;   // FO4 stores position directly here
+			NiPoint3 rot = ref->rot;   // FO4 stores rotation in radians
+
+			// Convert deltas from degrees to radians
+			const float degToRad = (float)(MATH_PI / 180.0);
+
+			rot.x += dXDeg * degToRad;
+			rot.y += dYDeg * degToRad;
+			rot.z += dZDeg * degToRad;
+
+			// Normalize rotation to [-pi, pi]
+			auto normalize = [](float a) -> float
+				{
+					const float twoPi = (float)(MATH_PI * 2.0);
+					while (a > MATH_PI) a -= twoPi;
+					while (a < -MATH_PI) a += twoPi;
+					return a;
+				};
+
+			rot.x = normalize(rot.x);
+			rot.y = normalize(rot.y);
+			rot.z = normalize(rot.z);
+
+			// Worldspace lookup via F4SE thunk
+			TESWorldSpace* world = CALL_MEMBER_FN(ref, GetWorldspace)();
+
+			// This engine API applies both position + rotation
+			UInt32* targetHandle = nullptr;
+
+			MoveRefrToPosition(ref, targetHandle, ref->parentCell, world, &pos, &rot);
+			return true;
+		}
+
+		static void RotateRefByDegrees2(float yawDeg = 0.0f,
+			float pitchDeg = 0.0f,
+			float rollDeg = 0.0f)
+		{
+			TESObjectREFR* ref = GetCurrentWSRef();
+			if (!ref) return;
+
+			NiAVObject* root = ref->GetObjectRootNode();
+			if (!root) return;
+
+			// Convert degrees to radians
+			const float yawRad = yawDeg * (MATH_PI / 180.0f);
+			const float pitchRad = pitchDeg * (MATH_PI / 180.0f);
+			const float rollRad = rollDeg * (MATH_PI / 180.0f);
+
+			// Build relative rotation delta
+			NiMatrix43 delta{};
+			delta.SetEulerAngles(yawRad, pitchRad, rollRad);
+
+			// Apply relative rotation to the node
+			root->m_localTransform.rot = root->m_localTransform.rot * delta;
+
+			// Update the scenegraph so the visible object rotates
+			root->UpdateTransformAndBounds();
+
+			// Extract Euler angles from the new matrix
+			float heading = 0.0f;
+			float attitude = 0.0f;
+			float bank = 0.0f;
+
+			root->m_localTransform.rot.GetEulerAngles(&heading, &attitude, &bank);
+
+			// Sync back to TESObjectREFR::rot (engine world rotation)
+			ref->rot.z = heading;   // yaw
+			ref->rot.x = attitude;  // pitch
+			ref->rot.y = bank;      // roll
+
+			// Normalize ref->rot to [-pi, pi]
+			auto Norm = [](float& a) {
+				while (a > MATH_PI) a -= 2.0f * MATH_PI;
+				while (a < -MATH_PI) a += 2.0f * MATH_PI;
+				};
+
+			Norm(ref->rot.x);
+			Norm(ref->rot.y);
+			Norm(ref->rot.z);
+		}
+
+
 //test sf pattern
 //48 83 EC 28 48 8B C1 8A 0A 38 88 40 02 00 00 74 0B
 

@@ -4,6 +4,7 @@
 #include "shlobj.h"
 #include "pattern.h"
 #include "f4se.h"
+#include <cmath>
 //#include <string.h>
 
 // macros
@@ -11,7 +12,7 @@
 
 // f4se plugin
 static IDebugLog               pirlog;
-static UInt32                  pluginVersion = 12;
+static UInt32                  pluginVersion = 13;
 static const char*             pluginLogFile = { "\\My Games\\Fallout4\\F4SE\\PlaceInRed.log" };
 static std::string             pluginINI = "Data\\F4SE\\Plugins\\PlaceInRed.ini";
 static PluginHandle            pirPluginHandle = kPluginHandle_Invalid;
@@ -27,6 +28,9 @@ typedef void  (*_PlayUISound_Native)   (const char*);
 typedef void  (*_PlayFileSound_Native) (const char*);
 typedef float (*_GetScale_Native)      (TESObjectREFR* objRef);
 typedef void  (*_SetScale_Native)      (TESObjectREFR* objRef, float scale);
+//typedef void (*_ModAngleX) (TESObjectREFR* objRef, float scale);
+//typedef void (*_ModAngleY) (TESObjectREFR* objRef, float scale);
+//typedef void (*_ModAngleZ) (TESObjectREFR* objRef, float scale);
 
 // structure for sound playing functions
 struct _PlaySounds
@@ -82,6 +86,7 @@ struct _POINTERS
 	uintptr_t* achievements = nullptr;
 	uintptr_t* playui = nullptr;
 	uintptr_t* playany = nullptr;
+	uintptr_t* moveworkbench = nullptr;
 };
 
 // struct for various bytes used for patching memory
@@ -123,7 +128,8 @@ struct _PATCHES
 	UInt8  TWO_ONES[2] = { 0x01, 0x01 }; //good place. written to bWSMode+0x09
 };
 
-// Struct to store things for simple
+// Struct to store a pointer, rel32, and final address, and optionally an ObScriptCommand pointers
+// needed a lot of these so made a struct
 struct SimpleFinder
 {
 	uintptr_t*       ptr = nullptr; // pointer to a pattern match
@@ -131,6 +137,7 @@ struct SimpleFinder
 	uintptr_t        addr = 0; // final address
 	ObScriptCommand* cmd = nullptr; // for first console commands
 };
+
 // Scale functions
 struct _ScaleFuncs
 {
@@ -142,6 +149,25 @@ struct _ScaleFuncs
 	uintptr_t*        setpattern = nullptr;
 	SInt32            s32 = 0;
 };
+
+// ModAngle functions
+//struct _AngleFunctions
+//{
+//	// Function pointers for the game's ModAngleX/Y/Z routines
+//	_ModAngleX  modAngleX = nullptr;
+//	_ModAngleY  modAngleY = nullptr;
+//	_ModAngleZ  modAngleZ = nullptr;
+//
+//	// Raw pattern-scan hits (addresses found via signature scanning)
+//	uintptr_t* modAngleXAddr = nullptr;
+//	uintptr_t* modAngleYAddr = nullptr;
+//	uintptr_t* modAngleZAddr = nullptr;
+//
+//	// Calculated 32-bit relative offsets used for patching/calling
+//	SInt32        modAngleXRel32 = 0;
+//	SInt32        modAngleYRel32 = 0;
+//	SInt32        modAngleZRel32 = 0;
+//};
 
 // structure to group consolenameref stuff
 struct _CNameRef

@@ -1,22 +1,24 @@
 #include "main.h"
 
-static _SETTINGS    settings;
-static _PATCHES     Patches;
-static _POINTERS    Pointers;
-static _PlaySounds  PlaySounds;
-static _ScaleFuncs  ScaleFuncs;
-static _CNameRef    CNameRef;
-static SimpleFinder FirstConsole;
-static SimpleFinder FirstObScript;
-static SimpleFinder WSMode;
-static SimpleFinder WSSize;
-static SimpleFinder gConsole;
-static SimpleFinder gDataHandler;
-static SimpleFinder CurrentWSRef;
-static SimpleFinder Zoom;
-static SimpleFinder Rotate;
-static SimpleFinder SetMotionType;
-static SimpleFinder GetConsoleArg;
+static _SETTINGS             settings;
+static _PATCHES              Patches;
+static _POINTERS             Pointers;
+static _PlaySounds           PlaySounds;
+static _ScaleFuncs           ScaleFuncs;
+//static _AngleFunctions       AngleFunctions;
+static _CNameRef             CNameRef;
+static SimpleFinder          FirstConsole;
+static SimpleFinder          FirstObScript;
+static SimpleFinder          WSMode;
+static SimpleFinder          WSSize;
+static SimpleFinder          WorkbenchSelection;
+static SimpleFinder          gConsole;
+static SimpleFinder          gDataHandler;
+static SimpleFinder          CurrentWSRef;
+static SimpleFinder          Zoom;
+static SimpleFinder          Rotate;
+static SimpleFinder          SetMotionType;
+static SimpleFinder          GetConsoleArg;
 static _SetMotionType_Native SetMotionType_Native = nullptr;
 static _GetConsoleArg_Native GetConsoleArg_Native = nullptr;
 
@@ -166,12 +168,13 @@ extern "C" {
 		}
 
 		// return rel32 from a pattern match
+		// pattern: pointer to pattern match
+		// start: bytes to reach rel32 from pattern
+		// end: bytes to reach the end
+		// shift: shift the final address by this many bytes
 		static SInt32 GetRel32FromPattern(uintptr_t* pattern, UInt64 start, UInt64 end, UInt64 shift = 0x0)
 		{
-			// pattern: pointer to pattern match
-			// start: bytes to reach rel32 from pattern
-			// end: bytes to reach the end
-			// shift: shift the final address by this many bytes
+
 			if (pattern) {
 				SInt32 relish32 = 0;
 				if (!ReadMemory(uintptr_t(pattern) + start, &relish32, sizeof(SInt32))) {
@@ -250,7 +253,7 @@ extern "C" {
 		}
 
 		// return the currently selected workshop ref with some safety checks
-		static TESObjectREFR* GetCurrentWSRef(bool refonly=1)
+		static TESObjectREFR* GetCurrentWSRef(bool bOnlySelectReferences=1)
 		{
 			PIR_LOG_PREP
 			if (CurrentWSRef.ptr && CurrentWSRef.addr && pir::InWorkshopMode()) {
@@ -264,7 +267,7 @@ extern "C" {
 					if (ref->formID <= 0) { return nullptr; }
 
 					//optional but checks by default
-					if (refonly) {
+					if (bOnlySelectReferences) {
 						if (ref->formType != 0x40) {
 							return nullptr;
 						}
@@ -274,6 +277,286 @@ extern "C" {
 			}
 			return nullptr;
 		}
+
+		static void LogWSRef()
+		{
+			PIR_LOG_PREP
+				TESObjectREFR* ref = GetCurrentWSRef(0);
+
+			_MESSAGE("========== TESObjectREFR DEBUG ==========");
+
+			if (!ref) {
+				_MESSAGE("Ref: NULL");
+				_MESSAGE("=============== END DEBUG ===============");
+				return;
+			}
+
+			//
+			// Identity
+			//
+			_MESSAGE("Ref Ptr:        %p", ref);
+			_MESSAGE("FormID:         %08X", ref->formID);
+			_MESSAGE("FormType:       %02X", ref->GetFormType());
+			_MESSAGE("Flags:          %08X", ref->flags);
+
+			if (ref->baseForm)
+				_MESSAGE("BaseForm:       %p (%08X)", ref->baseForm, ref->baseForm->formID);
+			else
+				_MESSAGE("BaseForm:       NULL");
+
+			//
+			// Name (safe virtual)
+			//
+			const char* name = nullptr;
+			__try { name = CALL_MEMBER_FN(ref, GetReferenceName)(); }
+			__except (EXCEPTION_EXECUTE_HANDLER) { name = nullptr; }
+
+			_MESSAGE("Name:           %s", name ? name : "(none)");
+
+			//
+			// Pickup / interaction byte
+			//
+			UInt8 pickup = 0;
+			__try { pickup = *(UInt8*)((UInt8*)ref + 0x1A); }
+			__except (EXCEPTION_EXECUTE_HANDLER) { pickup = 0xFF; }
+
+			_MESSAGE("PickupType:     0x%02X (ref+0x1A)", pickup);
+
+			//
+			// Transform
+			//
+			_MESSAGE("Position:       X=%.4f Y=%.4f Z=%.4f",
+				ref->pos.x, ref->pos.y, ref->pos.z);
+
+			_MESSAGE("Rotation(rad):  X=%.4f Y=%.4f Z=%.4f",
+				ref->rot.x, ref->rot.y, ref->rot.z);
+
+			_MESSAGE("Rotation(deg):  X=%.2f Y=%.2f Z=%.2f",
+				ref->rot.x * 57.2957795f,
+				ref->rot.y * 57.2957795f,
+				ref->rot.z * 57.2957795f);
+
+			//
+			// Cell / world
+			//
+			_MESSAGE("ParentCell:     %p", ref->parentCell);
+
+			TESWorldSpace* ws = nullptr;
+			__try { ws = CALL_MEMBER_FN(ref, GetWorldspace)(); }
+			__except (EXCEPTION_EXECUTE_HANDLER) { ws = nullptr; }
+
+			_MESSAGE("Worldspace:     %p", ws);
+
+			//
+			// HandleRefObject
+			//
+			_MESSAGE("HandleRefCount: %u", ref->handleRefObject.QRefCount());
+
+			//
+			// Loaded 3D
+			//
+			_MESSAGE("LoadedData:     %p", ref->unkF0);
+			if (ref->unkF0) {
+				_MESSAGE("   RootNode:    %p", ref->unkF0->rootNode);
+				_MESSAGE("   Flags:       %016llX", ref->unkF0->flags);
+			}
+
+			//
+			// Inventory
+			//
+			_MESSAGE("InventoryList:  %p", ref->inventoryList);
+
+			//
+			// ExtraData
+			//
+			_MESSAGE("ExtraDataList:  %p", ref->extraDataList);
+
+			if (ref->extraDataList) {
+				BSExtraData* data = nullptr;
+				__try { data = ref->extraDataList->m_data; }
+				__except (EXCEPTION_EXECUTE_HANDLER) { data = nullptr; }
+
+				UInt32 i = 0;
+				while (data && i < 512) {
+					UInt8 type = 0xFF;
+					__try { type = data->type; }
+					__except (EXCEPTION_EXECUTE_HANDLER) {}
+
+					_MESSAGE("   Extra[%03u]: type=0x%02X ptr=%p", i, type, data);
+
+					__try { data = data->next; }
+					__except (EXCEPTION_EXECUTE_HANDLER) { break; }
+					++i;
+				}
+			}
+
+			//
+			// Raw internal fields (IN ORDER)
+			//
+			_MESSAGE("Internal Fields:");
+			_MESSAGE("   unk60:   %p", ref->unk60);
+			_MESSAGE("   unk68:   %p", ref->unk68);
+			_MESSAGE("   unk70:   %08X", ref->unk70);
+			_MESSAGE("   unk74:   %08X", ref->unk74);
+			_MESSAGE("   unk78:   %08X", ref->unk78);
+			_MESSAGE("   unk7C:   %08X", ref->unk7C);
+			_MESSAGE("   unk80:   %016llX", ref->unk80);
+			_MESSAGE("   unk88:   %016llX", ref->unk88);
+			_MESSAGE("   unk90:   %016llX", ref->unk90);
+			_MESSAGE("   unk98:   %016llX", ref->unk98);
+			_MESSAGE("   unkA0:   %016llX", ref->unkA0);
+			_MESSAGE("   unkA8:   %016llX", ref->unkA8);
+			_MESSAGE("   unkB0:   %016llX", ref->unkB0);
+			_MESSAGE("   unkE8:   %p", ref->unkE8);
+			_MESSAGE("   unk104:  %08X", ref->unk104);
+			_MESSAGE("   unk108:  %08X", ref->unk108);
+
+			//
+			// LinkedRef (default only)
+			//
+			TESObjectREFR* linked = nullptr;
+			if (GetLinkedRef_Native) {
+				__try { linked = GetLinkedRef_Native(ref, nullptr); }
+				__except (EXCEPTION_EXECUTE_HANDLER) { linked = nullptr; }
+			}
+			_MESSAGE("LinkedRef:      %p", linked);
+
+			//
+			// VTABLE POINTER + SLOTS
+			//
+			void** vtbl = nullptr;
+			__try { vtbl = *(void***)ref; }
+			__except (EXCEPTION_EXECUTE_HANDLER) { vtbl = nullptr; }
+
+			_MESSAGE("VTable Ptr:     %p", vtbl);
+
+			if (vtbl) {
+				for (UInt32 i = 0x48; i <= 0xC3; i++) {
+					void* fn = nullptr;
+					__try { fn = vtbl[i]; }
+					__except (EXCEPTION_EXECUTE_HANDLER) { fn = nullptr; }
+
+					_MESSAGE("   VT[%02X]: %p", i, fn);
+				}
+			}
+
+			_MESSAGE("=============== END DEBUG ===============");
+		}
+
+
+		static void LogWSRef2()
+		{
+			PIR_LOG_PREP
+			TESObjectREFR* ref = GetCurrentWSRef(0);
+
+			_MESSAGE("========== TESObjectREFR DEBUG ==========");
+
+			if (!ref) {
+				_MESSAGE("Ref: NULL");
+				_MESSAGE("=============== END DEBUG ===============");
+				return;
+			}
+
+			//
+			// Basic identity
+			//
+			_MESSAGE("Ref:        %p", ref);
+			_MESSAGE("FormID:     %08X", ref->formID);
+			_MESSAGE("BaseForm:   %p (%08X)", ref->baseForm, ref->baseForm ? ref->baseForm->formID : 0);
+			_MESSAGE("Flags:      %04X", ref->flags);
+
+			//
+			// Name
+			//
+			const char* name = CALL_MEMBER_FN(ref, GetReferenceName)();
+			_MESSAGE("Name:       %s", name ? name : "(none)");
+
+			//
+			// Pickup type (ref + 0x1A)
+			//
+			UInt8 pickup = *((UInt8*)ref + 0x1A);
+			_MESSAGE("PickupType (ref+0x1A): %02X", pickup);
+
+			//
+			// Position / Rotation
+			//
+			_MESSAGE("Pos:        X=%.4f Y=%.4f Z=%.4f", ref->pos.x, ref->pos.y, ref->pos.z);
+			_MESSAGE("Rot(rad):   X=%.4f Y=%.4f Z=%.4f", ref->rot.x, ref->rot.y, ref->rot.z);
+			_MESSAGE("Rot(deg):   X=%.2f Y=%.2f Z=%.2f",
+				ref->rot.x * 57.2957795f,
+				ref->rot.y * 57.2957795f,
+				ref->rot.z * 57.2957795f);
+
+			//
+			// Parent cell / worldspace
+			//
+			_MESSAGE("ParentCell: %p", ref->parentCell);
+			TESWorldSpace* ws = CALL_MEMBER_FN(ref, GetWorldspace)();
+			_MESSAGE("Worldspace: %p", ws);
+
+			//
+			// Handle ref count
+			//
+			_MESSAGE("HandleRefObject:");
+			_MESSAGE("   RefCount: %u", ref->handleRefObject.QRefCount());
+
+			//
+			// ExtraDataList
+			//
+			_MESSAGE("ExtraDataList: %p", ref->extraDataList);
+
+			if (ref->extraDataList) {
+				ExtraDataList* xl = ref->extraDataList;
+
+				_MESSAGE("   ExtraData entries:");
+				for (BSExtraData* data = xl->m_data; data; data = data->next) {
+					_MESSAGE("      Extra type: %02X  ptr=%p", data->type, data);
+				}
+			}
+
+			//
+			// Loaded 3D data
+			//
+			_MESSAGE("LoadedData (ref->unkF0): %p", ref->unkF0);
+			if (ref->unkF0) {
+				_MESSAGE("   RootNode: %p", ref->unkF0->rootNode);
+				_MESSAGE("   Flags:    %016llX", ref->unkF0->flags);
+			}
+
+			//
+			// Inventory
+			//
+			_MESSAGE("InventoryList: %p", ref->inventoryList);
+
+			//
+			// Unk offsets
+			//
+			_MESSAGE("unk60:   %p", ref->unk60);
+			_MESSAGE("unk68:   %p", ref->unk68);
+			_MESSAGE("unk70:   %08X", ref->unk70);
+			_MESSAGE("unk74:   %08X", ref->unk74);
+			_MESSAGE("unk78:   %08X", ref->unk78);
+			_MESSAGE("unk7C:   %08X", ref->unk7C);
+			_MESSAGE("unk80:   %016llX", ref->unk80);
+			_MESSAGE("unk88:   %016llX", ref->unk88);
+			_MESSAGE("unk90:   %016llX", ref->unk90);
+			_MESSAGE("unk98:   %016llX", ref->unk98);
+			_MESSAGE("unkA0:   %016llX", ref->unkA0);
+			_MESSAGE("unkA8:   %016llX", ref->unkA8);
+			_MESSAGE("unkB0:   %016llX", ref->unkB0);
+			_MESSAGE("unkE8:   %p", ref->unkE8);
+
+			//
+			// LinkedRef
+			//
+			_MESSAGE("LinkedRefs:");
+			BGSKeyword* kw = nullptr;
+			TESObjectREFR* linked = GetLinkedRef_Native(ref, kw);
+			_MESSAGE("   DefaultLinkedRef: %p", linked);
+
+			_MESSAGE("=============== END DEBUG ===============");
+		}
+
 
 		// lock the current WS ref in place by changing the motion type to keyframed
 		static void LockUnlockWSRef(bool unlock = 0, bool sound = 0)
@@ -385,7 +668,7 @@ extern "C" {
 		}
 
 		//Move reference to itself
-		static void MoveRefToSelf(float modx = 0, float mody = 0, float modz = 0, int repeat = 0)
+		static void MoveRefToSelf(float modx = 0, float mody = 0, float modz = 0, int repeat_count = 0)
 		{
 			PIR_LOG_PREP
 				TESObjectREFR* ref = GetCurrentWSRef();
@@ -405,7 +688,7 @@ extern "C" {
 				newRot.y = ref->rot.y;
 				newRot.z = ref->rot.z;
 
-				for (int i = 0; i <= repeat; i++)
+				for (int i = 0; i <= repeat_count; i++)
 				{
 					MoveRefrToPosition(ref, &nullHandle, parentCell, worldspace, &newPos, &newRot);
 				}
@@ -435,20 +718,102 @@ extern "C" {
 			return false;
 		}
 
+		/*
+	RotateRefByDegrees
+	------------------
+	Applies incremental Euler rotations to a TESObjectREFR in worldspace.
+
+	Fallout 4 Rotation Notes:
+	  • ref->rot stores Euler angles in RADIANS.
+	  • Axis mapping (Creation Engine):
+			rot.x = pitch (rotation around X axis)
+			rot.y = roll  (rotation around Y axis)
+			rot.z = yaw   (rotation around Z axis)
+	  • Engine composes these in Z-Y-X Tait-Bryan order:
+			R = Rz(yaw) * Ry(roll) * Rx(pitch)
+		(This defines how rotations accumulate.)
+	  • Input deltas are provided in DEGREES, converted to radians here.
+	  • Angles are normalized to the range [-pi, pi].
+	  • MoveRefrToPosition applies both position AND rotation.
+
+	Parameters:
+		dXDeg - pitch delta (degrees, X axis)
+		dYDeg - roll  delta (degrees, Y axis)
+		dZDeg - yaw   delta (degrees, Z axis)
+*/
+
+		static void RotateRefByDegrees(float dXDeg, float dYDeg, float dZDeg)
+		{
+			TESObjectREFR* ref = GetCurrentWSRef(1);
+			if (!ref)
+				return;
+
+			// Current worldspace transform
+			NiPoint3 pos = ref->pos;   // World position (X/Y/Z)
+			NiPoint3 rot = ref->rot;   // Euler rotation in radians (X=pitch, Y=roll, Z=yaw)
+
+			// Convert deltas from degrees to radians
+			const float degToRad = (float)(MATH_PI / 180.0);
+
+			// Apply rotation deltas (FO4: X=pitch, Y=roll, Z=yaw)
+			rot.x += dXDeg * degToRad;   // pitch (X axis)
+			rot.y += dYDeg * degToRad;   // roll  (Y axis)
+			rot.z += dZDeg * degToRad;   // yaw   (Z axis)
+
+			// Normalize each component to [-pi, pi]
+			auto normalize = [](float a) -> float
+				{
+					const float twoPi = (float)(MATH_PI * 2.0);
+					while (a > MATH_PI) a -= twoPi;
+					while (a < -MATH_PI) a += twoPi;
+					return a;
+				};
+
+			rot.x = normalize(rot.x);
+			rot.y = normalize(rot.y);
+			rot.z = normalize(rot.z);
+
+			// Resolve worldspace via F4SE
+			TESWorldSpace* world = CALL_MEMBER_FN(ref, GetWorldspace)();
+
+			// Apply updated transform
+			UInt32* targetHandle = nullptr;
+			MoveRefrToPosition(ref, targetHandle, ref->parentCell, world, &pos, &rot);
+		}
+
+
+		// Single-axis helpers for readability and console bindings
+		static inline void YawRef(float deg)
+		{
+			// yaw = Z axis
+			RotateRefByDegrees(0.0f, 0.0f, deg);
+		}
+
+		static inline void PitchRef(float deg)
+		{
+			// pitch = X axis
+			RotateRefByDegrees(deg, 0.0f, 0.0f);
+		}
+
+		static inline void RollRef(float deg)
+		{
+			// roll = Y axis
+			RotateRefByDegrees(0.0f, deg, 0.0f);
+		}
+
+
 		//dump all console and obscript commands to the log file
-		//buggy and crashes. needs redone
 		static bool DumpCmds()
 		{
 			PIR_LOG_PREP
-
-				if (FirstConsole.cmd == nullptr || FirstObScript.cmd == nullptr) {
-					return false;
-				}
+			if (FirstConsole.cmd == nullptr || FirstObScript.cmd == nullptr) {
+				return false;
+			}
 
 			pirlog.FormattedMessage("---------------------------------------------------------");
 			pirlog.FormattedMessage("Type|opcode|rel32|address|short|long|params|needsparent|helptext");
 
-			for (ObScriptCommand* iter = FirstConsole.cmd; iter->opcode < (0x20B + kObScript_ConsoleOpBase); ++iter) {
+			for (ObScriptCommand* iter = FirstConsole.cmd; iter->opcode < (kObScript_NumConsoleCommands + kObScript_ConsoleOpBase); ++iter) {
 				if (iter) {
 					uintptr_t exeaddr = (uintptr_t) & (iter->execute);
 					uint64_t* funcptr = (uint64_t*)(exeaddr);
@@ -461,7 +826,7 @@ extern "C" {
 				}
 			}
 
-			for (ObScriptCommand* iter = FirstObScript.cmd; iter->opcode < (0x0332 + kObScript_ScriptOpBase); ++iter) {
+			for (ObScriptCommand* iter = FirstObScript.cmd; iter->opcode < (kObScript_NumObScriptCommands + kObScript_ScriptOpBase); ++iter) {
 				if (iter) {
 					uintptr_t exeaddr = (uintptr_t) & (iter->execute);
 					uint64_t* funcptr = (uint64_t*)(exeaddr);
@@ -633,6 +998,34 @@ extern "C" {
 			return false;
 		}
 
+		static bool ToggleWorkbenchMove()
+		{
+			if (WorkbenchSelection.ptr && WorkbenchSelection.addr) {
+
+				UInt8 AllowSelect1F = 0x00; //00 in the vtable means we can select it
+				ReadMemory(uintptr_t(WorkbenchSelection.addr + 0x05), &AllowSelect1F, sizeof(UInt8)); //whats the current value
+				
+				// game default - disable selecting workbench
+				if (AllowSelect1F == 0x00) {
+					SafeWrite8((uintptr_t)WorkbenchSelection.addr + 0x05, 0x01);
+					pir::ConsolePrint("Workbench move disabled (game default)");
+					return true;
+				}
+
+				// allow moving workbench
+				if (AllowSelect1F == 0x01) {
+					SafeWrite8((uintptr_t)WorkbenchSelection.addr + 0x05, 0x00); // allow selecting and storing workbench
+					pir::ConsolePrint("Workbench move allowed!");
+					return true;
+				}
+
+				// should always be 0 or 1
+				return false;
+
+			}
+			return false;
+		}
+
 		//toggle placing objects in red
 		static bool Toggle_PlaceInRed()
 		{
@@ -684,47 +1077,6 @@ extern "C" {
 			return false;
 		}
 
-		//Log details about the selected workshop ref
-		static void LogWSRef()
-		{
-			PIR_LOG_PREP
-				TESObjectREFR* ref = GetCurrentWSRef(0);
-			if (ref) {
-				pirlog.FormattedMessage("-------------------------------------------------------------------------------------");
-				UInt8	formtype = ref->GetFormType();
-				UInt32	formid = ref->formID;
-				UInt32	refflags = ref->flags;
-				UInt32	cellformid = ref->parentCell->formID;
-				UInt64	rootflags = ref->GetObjectRootNode()->flags;
-				const char* rootname = ref->GetObjectRootNode()->m_name.c_str();
-				UInt16	rootchildren = ref->GetObjectRootNode()->m_children.m_size;
-				float Px = ref->pos.x;
-				float Py = ref->pos.y;
-				float Pz = ref->pos.z;
-				float Rx = ref->rot.x;
-				float Ry = ref->rot.y;
-				float Rz = ref->rot.z;
-				pirlog.FormattedMessage("Pos             : %f %f %f", Px, Py, Pz);
-				pirlog.FormattedMessage("Rot             : %f %f %f", Rx, Ry, Rz);
-				pirlog.FormattedMessage("parentcell      : %04X", cellformid);
-				pirlog.FormattedMessage("root->m_name    : %s", rootname);
-				pirlog.FormattedMessage("root->m_children: %02X", rootchildren);
-				pirlog.FormattedMessage("ref->formtype   : %01X (%d)", formtype, formtype);
-				pirlog.FormattedMessage("ref->formID     : %04X", formid);
-				pirlog.FormattedMessage("ref->flags      : %04X", refflags);
-				pirlog.FormattedMessage("-------------------------------------------------------------------------------------");
-
-				NiBound	rootnibound = ref->GetObjectRootNode()->m_worldBound;
-
-				float nbradius = rootnibound.m_fRadius;
-				int nbradiusint = rootnibound.m_iRadiusAsInt;
-				NiPoint3 nbcenter = rootnibound.m_kCenter;
-
-				pirlog.FormattedMessage("%f %i %f %f %f", nbradius, nbradiusint, nbcenter.x, nbcenter.y, nbcenter.z);
-
-			}
-		}
-
 		// play sound by filename. must be under data\sounds
 		static void PlayFileSound(const char* wav)
 		{
@@ -752,69 +1104,121 @@ extern "C" {
 
 				if (consoleresult && param1[0]) {
 					switch (ConsoleSwitch(param1)) {
-					// debug and tests
-					case pir::ConsoleSwitch("dumprefs"):     pir::DumpCellRefs();         break;
-					case pir::ConsoleSwitch("dumpcmds"):     pir::DumpCmds();             break;
-					case pir::ConsoleSwitch("logref"):       pir::LogWSRef();             break;
-					case pir::ConsoleSwitch("print"):        pir::Toggle_ConsolePrint();  break;
-					case pir::ConsoleSwitch("sound"):        pir::PlayFileSound(param2);  break;
-					case pir::ConsoleSwitch("uisound"):      pir::PlayUISound(param2);    break;
+						// debug and tests
+						case pir::ConsoleSwitch("dumprefs"):     pir::DumpCellRefs();         break;
+						case pir::ConsoleSwitch("dumpcmds"):     pir::DumpCmds();             break;
+						case pir::ConsoleSwitch("logref"):       pir::LogWSRef();             break;
+						case pir::ConsoleSwitch("print"):        pir::Toggle_ConsolePrint();  break;
+						case pir::ConsoleSwitch("sound"):        pir::PlayFileSound(param2);  break;
+						case pir::ConsoleSwitch("uisound"):      pir::PlayUISound(param2);    break;
 
-					//toggles
-					case pir::ConsoleSwitch("1"):            pir::Toggle_PlaceInRed();         break;
-					case pir::ConsoleSwitch("toggle"):       pir::Toggle_PlaceInRed();         break;
-					case pir::ConsoleSwitch("2"):            pir::Toggle_ObjectSnap();         break;
-					case pir::ConsoleSwitch("osnap"):        pir::Toggle_ObjectSnap();         break;
-					case pir::ConsoleSwitch("3"):            pir::Toggle_GroundSnap();         break;
-					case pir::ConsoleSwitch("gsnap"):        pir::Toggle_GroundSnap();         break;
-					case pir::ConsoleSwitch("4"):            pir::Toggle_SlowZoomAndRotate();  break;
-					case pir::ConsoleSwitch("slow"):         pir::Toggle_SlowZoomAndRotate();  break;
-					case pir::ConsoleSwitch("5"):            pir::Toggle_WorkshopSize();       break;
-					case pir::ConsoleSwitch("workshopsize"): pir::Toggle_WorkshopSize();       break;
-					case pir::ConsoleSwitch("6"):            pir::Toggle_Outlines();           break;
-					case pir::ConsoleSwitch("outlines"):     pir::Toggle_Outlines();           break;
-					case pir::ConsoleSwitch("7"):            pir::Toggle_Achievements();       break;
-					case pir::ConsoleSwitch("achievements"): pir::Toggle_Achievements();       break;
+						//toggles
+						case pir::ConsoleSwitch("1"):             pir::Toggle_PlaceInRed();         break;
+						case pir::ConsoleSwitch("toggle"):        pir::Toggle_PlaceInRed();         break;
+						case pir::ConsoleSwitch("2"):             pir::Toggle_ObjectSnap();         break;
+						case pir::ConsoleSwitch("osnap"):         pir::Toggle_ObjectSnap();         break;
+						case pir::ConsoleSwitch("3"):             pir::Toggle_GroundSnap();         break;
+						case pir::ConsoleSwitch("gsnap"):         pir::Toggle_GroundSnap();         break;
+						case pir::ConsoleSwitch("4"):             pir::Toggle_SlowZoomAndRotate();  break;
+						case pir::ConsoleSwitch("slow"):          pir::Toggle_SlowZoomAndRotate();  break;
+						case pir::ConsoleSwitch("5"):             pir::Toggle_WorkshopSize();       break;
+						case pir::ConsoleSwitch("workshopsize"):  pir::Toggle_WorkshopSize();       break;
+						case pir::ConsoleSwitch("6"):             pir::Toggle_Outlines();           break;
+						case pir::ConsoleSwitch("outlines"):      pir::Toggle_Outlines();           break;
+						case pir::ConsoleSwitch("7"):             pir::Toggle_Achievements();       break;
+						case pir::ConsoleSwitch("achievements"):  pir::Toggle_Achievements();       break;
+						case pir::ConsoleSwitch("wb"):            pir::ToggleWorkbenchMove();       break;
 
-					//scale constants
-					case pir::ConsoleSwitch("scale1"):       pir::SetCurrentRefScale(1.0000f); break;
-					case pir::ConsoleSwitch("scale10"):      pir::SetCurrentRefScale(9.9999f); break;
+						//scale constants
+						case pir::ConsoleSwitch("scale1"):       pir::SetCurrentRefScale(1.0000f); break;
+						case pir::ConsoleSwitch("scale10"):      pir::SetCurrentRefScale(9.9999f); break;
 
-					//scale up							  				     
-					case pir::ConsoleSwitch("scaleup1"):	 pir::ModCurrentRefScale(1.0100f); break;
-					case pir::ConsoleSwitch("scaleup2"):	 pir::ModCurrentRefScale(1.0200f); break;
-					case pir::ConsoleSwitch("scaleup5"):	 pir::ModCurrentRefScale(1.0500f); break;
-					case pir::ConsoleSwitch("scaleup10"):	 pir::ModCurrentRefScale(1.1000f); break;
-					case pir::ConsoleSwitch("scaleup25"):	 pir::ModCurrentRefScale(1.2500f); break;
-					case pir::ConsoleSwitch("scaleup50"):	 pir::ModCurrentRefScale(1.5000f); break;
-					case pir::ConsoleSwitch("scaleup100"):	 pir::ModCurrentRefScale(2.0000f); break;
+						// yaw (Z)
+						case pir::ConsoleSwitch("y0.1"):  pir::YawRef(0.1f);  break;
+						case pir::ConsoleSwitch("y0.5"):  pir::YawRef(0.5f);  break;
+						case pir::ConsoleSwitch("y1"):    pir::YawRef(1.0f);  break;
+						case pir::ConsoleSwitch("y2"):    pir::YawRef(2.0f);  break;
+						case pir::ConsoleSwitch("y5"):    pir::YawRef(5.0f);  break;
+						case pir::ConsoleSwitch("y10"):   pir::YawRef(10.0f); break;
+						case pir::ConsoleSwitch("y15"):   pir::YawRef(15.0f); break;
+						case pir::ConsoleSwitch("y30"):   pir::YawRef(30.0f); break;
 
-					//scale down			   			  				        			 
-					case pir::ConsoleSwitch("scaledown1"):	 pir::ModCurrentRefScale(0.9900f); break;
-					case pir::ConsoleSwitch("scaledown2"):	 pir::ModCurrentRefScale(0.9800f); break;
-					case pir::ConsoleSwitch("scaledown5"):	 pir::ModCurrentRefScale(0.9500f); break;
-					case pir::ConsoleSwitch("scaledown10"):  pir::ModCurrentRefScale(0.9000f); break;
-					case pir::ConsoleSwitch("scaledown25"):  pir::ModCurrentRefScale(0.7500f); break;
-					case pir::ConsoleSwitch("scaledown50"):  pir::ModCurrentRefScale(0.5000f); break;
-					case pir::ConsoleSwitch("scaledown75"):	 pir::ModCurrentRefScale(0.2500f); break;
+						// yaw negative
+						case pir::ConsoleSwitch("y-0.1"): pir::YawRef(-0.1f); break;
+						case pir::ConsoleSwitch("y-0.5"): pir::YawRef(-0.5f); break;
+						case pir::ConsoleSwitch("y-1"):   pir::YawRef(-1.0f); break;
+						case pir::ConsoleSwitch("y-5"):   pir::YawRef(-5.0f); break;
+						case pir::ConsoleSwitch("y-10"):  pir::YawRef(-10.0f); break;
 
-					// lock and unlock
-					case pir::ConsoleSwitch("lock"):         pir::LockUnlockWSRef(0, 1); break;
-					case pir::ConsoleSwitch("l"):            pir::LockUnlockWSRef(0, 1); break;
-					case pir::ConsoleSwitch("lockq"):        pir::LockUnlockWSRef(0, 0); break;
-					case pir::ConsoleSwitch("unlock"):       pir::LockUnlockWSRef(1, 0); break;
-					case pir::ConsoleSwitch("u"):            pir::LockUnlockWSRef(1, 0); break;
+						// roll (Y)
+						case pir::ConsoleSwitch("r0.1"):  pir::RollRef(0.1f);  break;
+						case pir::ConsoleSwitch("r0.5"):  pir::RollRef(0.5f);  break;
+						case pir::ConsoleSwitch("r1"):    pir::RollRef(1.0f);  break;
+						case pir::ConsoleSwitch("r2"):    pir::RollRef(2.0f);  break;
+						case pir::ConsoleSwitch("r5"):    pir::RollRef(5.0f);  break;
+						case pir::ConsoleSwitch("r10"):   pir::RollRef(10.0f); break;
+						case pir::ConsoleSwitch("r15"):   pir::RollRef(15.0f); break;
+						case pir::ConsoleSwitch("r30"):   pir::RollRef(30.0f); break;
+
+						// roll negative
+						case pir::ConsoleSwitch("r-0.1"): pir::RollRef(-0.1f); break;
+						case pir::ConsoleSwitch("r-0.5"): pir::RollRef(-0.5f); break;
+						case pir::ConsoleSwitch("r-1"):   pir::RollRef(-1.0f); break;
+						case pir::ConsoleSwitch("r-5"):   pir::RollRef(-5.0f); break;
+						case pir::ConsoleSwitch("r-10"):  pir::RollRef(-10.0f); break;
+
+						// pitch (X)
+						case pir::ConsoleSwitch("p0.1"):  pir::PitchRef(0.1f);  break;
+						case pir::ConsoleSwitch("p0.5"):  pir::PitchRef(0.5f);  break;
+						case pir::ConsoleSwitch("p1"):    pir::PitchRef(1.0f);  break;
+						case pir::ConsoleSwitch("p2"):    pir::PitchRef(2.0f);  break;
+						case pir::ConsoleSwitch("p5"):    pir::PitchRef(5.0f);  break;
+						case pir::ConsoleSwitch("p10"):   pir::PitchRef(10.0f); break;
+						case pir::ConsoleSwitch("p15"):   pir::PitchRef(15.0f); break;
+						case pir::ConsoleSwitch("p30"):   pir::PitchRef(30.0f); break;
+
+						// pitch negative
+						case pir::ConsoleSwitch("p-0.1"): pir::PitchRef(-0.1f); break;
+						case pir::ConsoleSwitch("p-0.5"): pir::PitchRef(-0.5f); break;
+						case pir::ConsoleSwitch("p-1"):   pir::PitchRef(-1.0f); break;
+						case pir::ConsoleSwitch("p-5"):   pir::PitchRef(-5.0f); break;
+						case pir::ConsoleSwitch("p-10"):  pir::PitchRef(-10.0f); break;
+
+						//scale up							  				     
+						case pir::ConsoleSwitch("scaleup1"):	 pir::ModCurrentRefScale(1.0100f); break;
+						case pir::ConsoleSwitch("scaleup2"):	 pir::ModCurrentRefScale(1.0200f); break;
+						case pir::ConsoleSwitch("scaleup5"):	 pir::ModCurrentRefScale(1.0500f); break;
+						case pir::ConsoleSwitch("scaleup10"):	 pir::ModCurrentRefScale(1.1000f); break;
+						case pir::ConsoleSwitch("scaleup25"):	 pir::ModCurrentRefScale(1.2500f); break;
+						case pir::ConsoleSwitch("scaleup50"):	 pir::ModCurrentRefScale(1.5000f); break;
+						case pir::ConsoleSwitch("scaleup100"):	 pir::ModCurrentRefScale(2.0000f); break;
+
+						//scale down			   			  				        			 
+						case pir::ConsoleSwitch("scaledown1"):	 pir::ModCurrentRefScale(0.9900f); break;
+						case pir::ConsoleSwitch("scaledown2"):	 pir::ModCurrentRefScale(0.9800f); break;
+						case pir::ConsoleSwitch("scaledown5"):	 pir::ModCurrentRefScale(0.9500f); break;
+						case pir::ConsoleSwitch("scaledown10"):  pir::ModCurrentRefScale(0.9000f); break;
+						case pir::ConsoleSwitch("scaledown25"):  pir::ModCurrentRefScale(0.7500f); break;
+						case pir::ConsoleSwitch("scaledown50"):  pir::ModCurrentRefScale(0.5000f); break;
+						case pir::ConsoleSwitch("scaledown75"):	 pir::ModCurrentRefScale(0.2500f); break;
+
+						// lock and unlock
+						case pir::ConsoleSwitch("lock"):         pir::LockUnlockWSRef(0, 1); break;
+						case pir::ConsoleSwitch("l"):            pir::LockUnlockWSRef(0, 1); break;
+						case pir::ConsoleSwitch("lockq"):        pir::LockUnlockWSRef(0, 0); break;
+						case pir::ConsoleSwitch("unlock"):       pir::LockUnlockWSRef(1, 0); break;
+						case pir::ConsoleSwitch("u"):            pir::LockUnlockWSRef(1, 0); break;
 
 
-					// console name ref toggle
-					case pir::ConsoleSwitch("cnref"):        pir::Toggle_CNameRef(); break;
+						// console name ref toggle
+						case pir::ConsoleSwitch("cnref"):        pir::Toggle_CNameRef(); break;
 
 
-					// show help
-					case pir::ConsoleSwitch("?"):            pir::ConsolePrint(ConsoleHelpMSG); break;
-					case pir::ConsoleSwitch("help"):         pir::ConsolePrint(ConsoleHelpMSG); break;
+						// show help
+						case pir::ConsoleSwitch("?"):            pir::ConsolePrint(ConsoleHelpMSG); break;
+						case pir::ConsoleSwitch("help"):         pir::ConsolePrint(ConsoleHelpMSG); break;
 
-					default: pir::ConsolePrint(ConsoleHelpMSG);  break;
+						default: pir::ConsolePrint(ConsoleHelpMSG);  break;
 					}
 
 					return true;
@@ -883,7 +1287,7 @@ extern "C" {
 					&& Pointers.D && Pointers.E && Pointers.F && Pointers.G && Pointers.H
 					&& Pointers.J && Pointers.Y && Pointers.R && Pointers.CORRECT
 					&& Pointers.wstimer && Pointers.gsnap && Pointers.osnap && Pointers.outlines
-					&& WSSize.ptr && Zoom.ptr && Rotate.ptr && SetMotionType.ptr
+					&& WSSize.ptr && Zoom.ptr && Rotate.ptr && SetMotionType.ptr && WorkbenchSelection.ptr
 					)
 				{
 					/*
@@ -892,6 +1296,9 @@ extern "C" {
 					 Pointers.achievements - not a showstopper
 					 ConsoleRefCallFinder - copy of another mod never required
 					 GDataHandlerFinder - not using yet
+					 AngleFunctions.modAngleX - probably wont ever use
+					 AngleFunctions.modAngleY - probably wont ever use
+					 AngleFunctions.modAngleZ - probably wont ever use
 
 					*/
 
@@ -931,12 +1338,16 @@ extern "C" {
 			pirlog.FormattedMessage("GetConsoleArg :%p|Fallout4.exe+0x%08X", GetConsoleArg.ptr, GetConsoleArg.r32);
 			pirlog.FormattedMessage("GetScale      :%p|Fallout4.exe+0x%08X", ScaleFuncs.getpattern, ScaleFuncs.g32);
 			pirlog.FormattedMessage("SetScale      :%p|Fallout4.exe+0x%08X", ScaleFuncs.setpattern, ScaleFuncs.s32);
+			//pirlog.FormattedMessage("ModAngleX     :%p|Fallout4.exe+0x%08X", AngleFunctions.modAngleXAddr, AngleFunctions.modAngleXRel32);
+			//pirlog.FormattedMessage("ModAngleY     :%p|Fallout4.exe+0x%08X", AngleFunctions.modAngleYAddr, AngleFunctions.modAngleYRel32);
+			//pirlog.FormattedMessage("ModAngleZ     :%p|Fallout4.exe+0x%08X", AngleFunctions.modAngleZAddr, AngleFunctions.modAngleZRel32);
 			pirlog.FormattedMessage("SetMotionType :%p|Fallout4.exe+0x%08X", SetMotionType.ptr, SetMotionType.r32);
 			pirlog.FormattedMessage("PlayFileSound :%p|Fallout4.exe+0x%08X", PlaySounds.Filepattern, PlaySounds.File_r32);
 			pirlog.FormattedMessage("PlayUISound   :%p|Fallout4.exe+0x%08X", PlaySounds.UIpattern, PlaySounds.UI_r32);
 			pirlog.FormattedMessage("WSMode        :%p|Fallout4.exe+0x%08X", WSMode.ptr, WSMode.r32);
 			pirlog.FormattedMessage("CurrentWSRef  :%p|Fallout4.exe+0x%08X", CurrentWSRef.ptr, CurrentWSRef.r32);
 			pirlog.FormattedMessage("GConsole      :%p|Fallout4.exe+0x%08X", gConsole.ptr, gConsole.r32);
+			pirlog.FormattedMessage("WBSelect      :%p|Fallout4.exe+0x%08X", WorkbenchSelection.ptr, WorkbenchSelection.r32);
 			pirlog.FormattedMessage("WSSize        :%p|Fallout4.exe+0x%08X", WSSize.ptr, (uintptr_t)WSSize.ptr - RelocationManager::s_baseAddr);
 			pirlog.FormattedMessage("WSFloats      :%p|Fallout4.exe+0x%08X", WSSize.addr, WSSize.addr - RelocationManager::s_baseAddr);
 			pirlog.FormattedMessage("Rotate        :%p|%p|orig %f|slow %f", Rotate.ptr, Rotate.addr, settings.fOriginalROTATE, settings.fSlowerROTATE);
@@ -1052,12 +1463,13 @@ extern "C" {
 				return false;
 			}
 
-			// object interface
-			//g_object = (F4SEObjectInterface*)f4se->QueryInterface(kInterface_Object);
-			//if (!g_object) {
-			//	pirlog.FormattedMessage("[%s] Failed to set object interface!", thisfunc);
-			//	return false;
-			//}
+			/* object interface
+			g_object = (F4SEObjectInterface*)f4se->QueryInterface(kInterface_Object);
+			if (!g_object) {
+				pirlog.FormattedMessage("[%s] Failed to set object interface!", thisfunc);
+				return false;
+			}
+			*/
 
 			// message interface
 			if (g_messaging->RegisterListener(pirPluginHandle, "F4SE", pir::MessageInterfaceHandler) == false) {
@@ -1108,6 +1520,10 @@ extern "C" {
 			Zoom.ptr = Utility::pattern("F3 0F 10 0D ? ? ? ? 0F 29 74 24 20 F3 0F 10 35").count(1).get(0).get<uintptr_t>();
 			gConsole.ptr = Utility::pattern("48 8D 05 ? ? ? ? 48 89 2D ? ? ? ? 48 89 05 ? ? ? ? 89 2D ? ? ? ? 40 88 2D ? ? ? ? 48").count(1).get(0).get<uintptr_t>(); // for console print
 			gDataHandler.ptr = Utility::pattern("48 83 3D ? ? ? ? 00 4D 8B F1 41 0F B6 F0 48 8B FA 48 8B D9 0F 84 ? ? ? ? 80 3D ? ? ? ? 00 48").count(1).get(0).get<uintptr_t>();
+			WorkbenchSelection.ptr = Utility::pattern("0F B6 84 02 ? ? ? ? 8B 8C 82 ? ? ? ? 48 03 CA FF E1 B0 01 48 83 C4 20 5B C3").count(1).get(0).get<uintptr_t>();
+			//AngleFunctions.modAngleXAddr = Utility::pattern("40 53 48 83 EC 30 0F 29 74 24 20 48 8B D9 0F 28 F1 0F 2E B1 C0 00 00 00").count(1).get(0).get<uintptr_t>();
+			//AngleFunctions.modAngleYAddr = Utility::pattern("40 53 48 83 EC 30 0F 29 74 24 20 48 8B D9 0F 28 F1 0F 2E B1 C4 00 00 00").count(1).get(0).get<uintptr_t>();
+			//AngleFunctions.modAngleZAddr = Utility::pattern("40 53 48 83 EC 30 0F 29 74 24 20 48 8B D9 0F 28 F1 0F 2E B1 C8 00 00 00").count(1).get(0).get<uintptr_t>();
 
 			// store old bytes
 			if (Pointers.C) { ReadMemory((uintptr_t(Pointers.C)), &Patches.C_OLD, 0x07); }
@@ -1146,12 +1562,43 @@ extern "C" {
 				WSMode.addr = RelocationManager::s_baseAddr + WSMode.r32;
 			}
 
+			//moveworkbench
+			if (WorkbenchSelection.ptr) {
+
+				//moveworkbench.r32 = GetRel32FromPattern(moveworkbench.ptr, 0x04, 0x08, 0x00);
+				//^ doesnt work because this particular one is relative to the base address not the pattern location
+
+				ReadMemory((uintptr_t)WorkbenchSelection.ptr + 0x04, &WorkbenchSelection.r32, sizeof(uint32_t));
+				WorkbenchSelection.addr = RelocationManager::s_baseAddr + (uintptr_t)WorkbenchSelection.r32;
+
+			}
+
 			//setscale
 			if (ScaleFuncs.setpattern) {
 				ScaleFuncs.s32 = GetRel32FromPattern(ScaleFuncs.setpattern, 0x01, 0x05, 0x00);
 				RelocAddr <_SetScale_Native> GimmeSetScale(ScaleFuncs.s32);
 				ScaleFuncs.SetScale = GimmeSetScale;
 			}
+
+			/*modangle
+			if (AngleFunctions.modAngleXAddr && AngleFunctions.modAngleYAddr && AngleFunctions.modAngleZAddr) {
+
+				//modangle x
+				AngleFunctions.modAngleXRel32 = uintptr_t(AngleFunctions.modAngleXAddr) - RelocationManager::s_baseAddr;
+				RelocAddr <_ModAngleX> GimmeModAngleX(AngleFunctions.modAngleXRel32);
+				AngleFunctions.modAngleX = GimmeModAngleX;
+
+				//modangle y
+				AngleFunctions.modAngleYRel32 = uintptr_t(AngleFunctions.modAngleYAddr) - RelocationManager::s_baseAddr;
+				RelocAddr <_ModAngleY> GimmeModAngleY(AngleFunctions.modAngleYRel32);
+				AngleFunctions.modAngleY = GimmeModAngleY;
+
+				//modangle z
+				AngleFunctions.modAngleZRel32 = uintptr_t(AngleFunctions.modAngleZAddr) - RelocationManager::s_baseAddr;
+				RelocAddr <_ModAngleZ> GimmeModAngleZ(AngleFunctions.modAngleZRel32);
+				AngleFunctions.modAngleZ = GimmeModAngleZ;
+			}
+			*/
 
 			//getscale
 			if (ScaleFuncs.getpattern) {
@@ -1266,7 +1713,7 @@ extern "C" {
 		"RandyConstan",
 		0,
 		0,
-		{	RUNTIME_VERSION_1_11_169, 1
+		{	RUNTIME_VERSION_1_11_191, 1
 		},
 		0,
 	};
