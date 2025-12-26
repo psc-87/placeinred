@@ -920,8 +920,6 @@ extern "C" {
 			}
 			if (Pointers.gsnap && !settings.GROUNDSNAP_ENABLED) {
 				SafeWrite8((uintptr_t)Pointers.gsnap + 0x01, 0x86);
-				settings.GROUNDSNAP_ENABLED = true;
-				pir::ConsolePrint("Ground snap enabled");
 				return true;
 
 			}
