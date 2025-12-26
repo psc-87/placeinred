@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef __PATTERN_H__
 #define __PATTERN_H__
 
