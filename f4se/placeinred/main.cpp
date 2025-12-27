@@ -1,18 +1,18 @@
 #include "main.h"
 
 
-static SimpleFinder          FirstConsole;
-static SimpleFinder          FirstObScript;
-static SimpleFinder          WSMode;
-static SimpleFinder          WSSize;
-static SimpleFinder          WorkbenchSelection;
-static SimpleFinder          gConsole;
-static SimpleFinder          gDataHandler;
-static SimpleFinder          CurrentWSRef;
-static SimpleFinder          Zoom;
-static SimpleFinder          Rotate;
-static SimpleFinder          SetMotionType;
-static SimpleFinder          GetConsoleArg;
+static SimpleFinder FirstConsole;
+static SimpleFinder FirstObScript;
+static SimpleFinder WSMode;
+static SimpleFinder WSSize;
+static SimpleFinder WorkbenchSelection;
+static SimpleFinder gConsole;
+static SimpleFinder gDataHandler;
+static SimpleFinder CurrentWSRef;
+static SimpleFinder Zoom;
+static SimpleFinder Rotate;
+static SimpleFinder SetMotionType;
+static SimpleFinder GetConsoleArg;
 
 static PlaceInRed placeinred;
 UInt32 pluginVersion = 14;
@@ -45,44 +45,10 @@ namespace pir {
 		return s_configPath;
 	}
 
-	// return an ini setting as a std string
-	static std::string GetPIRConfigOption(const char* section, const char* key)
-	{
-		std::string	result;
-		const std::string& configPath = GetPluginINIPath();
-		if (!configPath.empty())
-		{
-			char resultBuf[2048]{};
-			resultBuf[0] = 0;
-			UInt32 resultLen = GetPrivateProfileString(section, key, NULL, resultBuf, sizeof(resultBuf), configPath.c_str());
-			result = resultBuf;
-		}
-		return result;
-	}
+}
 
-	// grok generated - bool parser
-	static bool StringToBool(const std::string& s, bool defaultValue = false)
-	{
-		std::string lower;
-		lower.reserve(s.size());
-		for (char c : s) lower += std::tolower(c);
-
-		// Trim whitespace
-		const auto start = lower.find_first_not_of(" \t\r\n");
-		if (start == std::string::npos) return defaultValue;
-		const auto end = lower.find_last_not_of(" \t\r\n");
-		const std::string trimmed = lower.substr(start, end - start + 1);
-
-		if (trimmed == "1" || trimmed == "true" || trimmed == "yes" || trimmed == "on")
-			return true;
-		if (trimmed == "0" || trimmed == "false" || trimmed == "no" || trimmed == "off")
-			return false;
-
-		return defaultValue;
-	}
-
-	// grok generated - GetPrivateProfileString with a tiny helper wrapper
-	static std::string GetINIString(const char* section, const char* key, const char* defaultValue = "")
+	// get a plugin ini setting as a string value
+	static std::string GetPluginINISettingAsString(const char* section, const char* key, const char* defaultValue = "")
 	{
 		const std::string& iniPath = pir::GetPluginINIPath();
 		if (iniPath.empty()) return defaultValue;
@@ -92,28 +58,55 @@ namespace pir {
 		return buffer;
 	}
 
+	// convert ini string to bool
+	static bool GetBoolFromINIString(const std::string& s, bool defaultValue = false)
+	{
+		std::string lower;
+		lower.reserve(s.size());
+		for (unsigned char c : s)
+			lower += static_cast<char>(std::tolower(c));
+
+		// Trim whitespace
+		const auto start = lower.find_first_not_of(" \t\r\n");
+		if (start == std::string::npos)
+			return defaultValue;
+
+		const auto end = lower.find_last_not_of(" \t\r\n");
+		const std::string trimmed = lower.substr(start, end - start + 1);
+
+		if (trimmed == "1" || trimmed == "true" || trimmed == "yes" || trimmed == "on")
+			return true;
+		if (trimmed == "0" || trimmed == "false" || trimmed == "no" || trimmed == "off")
+			return false;
+
+		return defaultValue;
+
+
 
 }
 
 extern "C" {
 	namespace pir {
 
-		static const char* ConsoleHelpMSG =
-		{
-		  "PlaceInRed (pir) usage:\n"
-		  "pir toggle       (pir 1) toggle place in R\n"
-		  "pir osnap        (pir 2) toggle object snapping\n"
-		  "pir gsnap        (pir 3) toggle ground snapping\n"
-		  "pir slow         (pir 4) toggle slower object rotation and zoom speed\n"
-		  "pir workshopsize (pir 5) toggle unlimited workshop build size\n"
-		  "pir outlines     (pir 6) toggle object outlines\n"
-		  "pir achievements (pir 7) toggle achievement with mods\n"
-		  "pir scaleup1     (and 2, 5, 10, 25, 50, 100) scale up percent\n"
-		  "pir scaledown1   (and 2, 5, 10, 25, 50, 75) scale down percent\n"
-		  "pir lock         (pir l) lock object in place (motiontype keyframed)\n"
-		  "pir unlock       (pir u) unlock object (motiontype dynamic)"
-		  "pir wb                   allow moving workbench"
-		};
+		//static const char* ConsoleHelpMSG =
+		//{
+		//  "PlaceInRed (pir) usage:\n"
+		//  "pir toggle       (pir 1) toggle place in R\n"
+		//  "pir osnap        (pir 2) toggle object snapping\n"
+		//  "pir gsnap        (pir 3) toggle ground snapping\n"
+		//  "pir slow         (pir 4) toggle slower object rotation and zoom speed\n"
+		//  "pir workshopsize (pir 5) toggle unlimited workshop build size\n"
+		//  "pir outlines     (pir 6) toggle object outlines\n"
+		//  "pir achievements (pir 7) toggle achievement with mods\n"
+		//  "pir scaleup1     (and 2, 5, 10, 25, 50, 100) scale up percent\n"
+		//  "pir scaledown1   (and 2, 5, 10, 25, 50, 75) scale down percent\n"
+		//  "pir xc/yc/zc      modify angle custom +degrees\n"
+		//  "pir x-c/y-c/z-c   modify angle custom -degrees\n"
+		//  "pir lock         (pir l) lock object in place (motiontype keyframed)\n"
+		//  "pir unlock       (pir u) unlock object (motiontype dynamic)\n"
+		//  "pir unlock       (pir u) unlock object (motiontype dynamic)\n"
+		//  "pir wb                   allow moving workbench"
+		//};
 
 
 		// string to float
@@ -154,6 +147,22 @@ extern "C" {
 			*dst = '\0'; // Null-terminate the result string
 		
 			return newStr;
+		}
+
+		static void StripNewLinesAndPipesToBuffer(const char* in, char* out, size_t outSize)
+		{
+			if (!out || outSize == 0) return;
+			out[0] = '\0';
+			if (!in) return;
+
+			size_t j = 0;
+			for (size_t i = 0; in[i] && j + 1 < outSize; ++i)
+			{
+				const char c = in[i];
+				if (c != '\n' && c != '\r' && c != '|')
+					out[j++] = c;
+			}
+			out[j] = '\0';
 		}
 
 		// Simple function to read memory (credit reg2k).
@@ -207,6 +216,7 @@ extern "C" {
 		}
 
 		// Returns a pointer to the address obtained from a base+offsets
+		// allows you to call with multiple offsets for multi-level pointers
 		static uintptr_t* GimmeMultiPointer(uintptr_t baseAddress, UInt32* offsets, UInt32 numOffsets)
 		{
 			if (!baseAddress || baseAddress == 0) {
@@ -638,9 +648,50 @@ extern "C" {
 		}
 
 
+		//static bool DumpCmds()
+		//{
+		//	if (!FirstConsole.cmd || !FirstObScript.cmd){
+		//		return false;
+		//	}
+		//
+		//	pirlog("---------------------------------------------------------");
+		//	pirlog("Type|opcode|rel32|address|short|long|params|needsparent|helptext");
+		//
+		//	auto DumpTable = [&](const char* type, ObScriptCommand* start, uint32_t base, uint32_t max)
+		//		{
+		//			constexpr uint32_t HARD_MAX = 4096;
+		//			ObScriptCommand* iter = start;
+		//
+		//			for (uint32_t i = 0; i < HARD_MAX; ++i, ++iter)
+		//			{
+		//				if (!iter) break;
+		//				if (iter->opcode < base || iter->opcode >= base + max) break;
+		//
+		//				uint64_t func = reinterpret_cast<uint64_t>(iter->execute);
+		//				if (!func || !iter->shortName || !iter->longName)
+		//					continue;
+		//
+		//				uint64_t rel = (func >= placeinred.FO4BaseAddr) ? (func - placeinred.FO4BaseAddr) : 0;
+		//				const char* help = iter->helpText ? StripNewLinesAndPipes(iter->helpText) : "";
+		//
+		//				pirlog(
+		//					"%s|%06X|Fallout4.exe+0x%08llX|%p|%s|%s|%X|%X|%s",
+		//					type, iter->opcode, rel, (void*)func,
+		//					iter->shortName, iter->longName,
+		//					iter->numParams, iter->needsParent, help
+		//				);
+		//			}
+		//		};
+		//
+		//	DumpTable("Console", FirstConsole.cmd, kObScript_ConsoleOpBase, kObScript_NumConsoleCommands);
+		//	DumpTable("ObScript", FirstObScript.cmd, kObScript_ScriptOpBase, kObScript_NumObScriptCommands);
+		//
+		//	return true;
+		//}
+
 		static bool DumpCmds()
 		{
-			if (!FirstConsole.cmd || !FirstObScript.cmd){
+			if (!FirstConsole.cmd || !FirstObScript.cmd) {
 				return false;
 			}
 
@@ -657,18 +708,28 @@ extern "C" {
 						if (!iter) break;
 						if (iter->opcode < base || iter->opcode >= base + max) break;
 
-						uint64_t func = reinterpret_cast<uint64_t>(iter->execute);
+						uint64_t func = (uint64_t)iter->execute;
 						if (!func || !iter->shortName || !iter->longName)
 							continue;
 
-						uint64_t rel = (func >= placeinred.FO4BaseAddr) ? (func - placeinred.FO4BaseAddr) : 0;
-						const char* help = iter->helpText ? StripNewLinesAndPipes(iter->helpText) : "";
+						uint64_t rel = (func >= placeinred.FO4BaseAddr)
+							? (func - placeinred.FO4BaseAddr)
+							: 0;
+
+						char helpBuf[2048];
+						StripNewLinesAndPipesToBuffer(iter->helpText, helpBuf, sizeof(helpBuf));
 
 						pirlog(
 							"%s|%06X|Fallout4.exe+0x%08llX|%p|%s|%s|%X|%X|%s",
-							type, iter->opcode, rel, (void*)func,
-							iter->shortName, iter->longName,
-							iter->numParams, iter->needsParent, help
+							type,
+							iter->opcode,
+							rel,
+							(void*)func,
+							iter->shortName,
+							iter->longName,
+							iter->numParams,
+							iter->needsParent,
+							helpBuf
 						);
 					}
 				};
@@ -678,6 +739,7 @@ extern "C" {
 
 			return true;
 		}
+
 
 		//toggle object outlines on next object
 		static bool Toggle_Outlines()
@@ -808,14 +870,14 @@ extern "C" {
 		// toggle consolenameref
 		static bool Toggle_ConsoleNameRef()
 		{
-			if (placeinred.cnref_GetRefName_pattern == false || placeinred.cnref_call == false) {
+			if (placeinred.cnref_GetRefName_pattern == false || placeinred.cnref_original_call_pattern == false) {
 				return false;
 			}
 
 			// toggle off
 			if (placeinred.ConsoleNameRef_ENABLED)
 			{
-				SafeWriteBuf(uintptr_t(placeinred.cnref_call), placeinred.CNameRef_OLD, placeinred.CNameRef_OLD_Size);
+				SafeWriteBuf(uintptr_t(placeinred.cnref_original_call_pattern), placeinred.CNameRef_OLD, placeinred.CNameRef_OLD_Size);
 				placeinred.ConsoleNameRef_ENABLED = false;
 				pir::ConsolePrint("ConsoleRefName toggled off.");
 				return true;
@@ -824,8 +886,8 @@ extern "C" {
 			// toggle on
 			if (!placeinred.ConsoleNameRef_ENABLED)
 			{
-				SafeWriteCall(uintptr_t(placeinred.cnref_call), placeinred.cnref_GetRefName_addr); //patch call
-				SafeWrite8(uintptr_t(placeinred.cnref_call) + 0x05, 0x90); // for a clean patch
+				SafeWriteCall(uintptr_t(placeinred.cnref_original_call_pattern), placeinred.cnref_GetRefName_addr); //patch call
+				SafeWrite8(uintptr_t(placeinred.cnref_original_call_pattern) + 0x05, 0x90); // for a clean patch
 				placeinred.ConsoleNameRef_ENABLED = true;
 				pir::ConsolePrint("ConsoleRefName toggled on.");
 				return true;
@@ -933,7 +995,7 @@ extern "C" {
 		}
 
 		//called every time the console command runs
-		static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, double* result, void* opcodeOffsetPtr)
+		/*static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, double* result, void* opcodeOffsetPtr)
 		{
 			if (placeinred.GetConsoleArg_Native && GetConsoleArg.ptr && (GetConsoleArg.r32 != 0)) {
 				char param1[4096];
@@ -948,8 +1010,7 @@ extern "C" {
 						case pir::ConsoleSwitch("logref"):       pir::LogWSRef();             break;
 						case pir::ConsoleSwitch("print"):        pir::Toggle_ConsolePrint();  break;
 						case pir::ConsoleSwitch("sound"):        pir::PlayFileSound(param2);  break;
-						case pir::ConsoleSwitch("uisound"):      pir::PlayUISound(param2);    break;
-						
+						case pir::ConsoleSwitch("uisound"):      pir::PlayUISound(param2);    break;						
 
 						//toggles
 						case pir::ConsoleSwitch("1"):            pir::Toggle_PlaceInRed();         break;
@@ -973,45 +1034,9 @@ extern "C" {
 						case pir::ConsoleSwitch("scale1"):       pir::SetCurrentRefScale(1.0000f); break;
 						case pir::ConsoleSwitch("scale10"):      pir::SetCurrentRefScale(9.9999f); break;
 
-						// angle custom step
-						case pir::ConsoleSwitch("xc"):  pir::RotateRefByDegreesX(placeinred.fRotateDegreesCustom);  break;
-						case pir::ConsoleSwitch("yc"):  pir::RotateRefByDegreesY(placeinred.fRotateDegreesCustom);  break;
-						case pir::ConsoleSwitch("zc"):  pir::RotateRefByDegreesZ(placeinred.fRotateDegreesCustom);  break;
-
-						case pir::ConsoleSwitch("z0.1"):  pir::RotateRefByDegreesZ(0.1f);  break;
-						case pir::ConsoleSwitch("z0.5"):  pir::RotateRefByDegreesZ(0.5f);  break;
-						case pir::ConsoleSwitch("z1"):    pir::RotateRefByDegreesZ(1.0f);  break;
-						case pir::ConsoleSwitch("z2"):    pir::RotateRefByDegreesZ(2.0f);  break;
-						case pir::ConsoleSwitch("z5"):    pir::RotateRefByDegreesZ(5.0f);  break;
-						case pir::ConsoleSwitch("z10"):   pir::RotateRefByDegreesZ(10.0f); break;
-						case pir::ConsoleSwitch("z15"):   pir::RotateRefByDegreesZ(15.0f); break;
-						case pir::ConsoleSwitch("z30"):   pir::RotateRefByDegreesZ(30.0f); break;
-
-						// angle z negative
-						case pir::ConsoleSwitch("z-0.1"): pir::RotateRefByDegreesZ(-0.1f); break;
-						case pir::ConsoleSwitch("z-0.5"): pir::RotateRefByDegreesZ(-0.5f); break;
-						case pir::ConsoleSwitch("z-1"):   pir::RotateRefByDegreesZ(-1.0f); break;
-						case pir::ConsoleSwitch("z-5"):   pir::RotateRefByDegreesZ(-5.0f); break;
-						case pir::ConsoleSwitch("z-10"):  pir::RotateRefByDegreesZ(-10.0f); break;
-
-						// angle y
-						case pir::ConsoleSwitch("y0.1"):  pir::RotateRefByDegreesY(0.1f);  break;
-						case pir::ConsoleSwitch("y0.5"):  pir::RotateRefByDegreesY(0.5f);  break;
-						case pir::ConsoleSwitch("y1"):    pir::RotateRefByDegreesY(1.0f);  break;
-						case pir::ConsoleSwitch("y2"):    pir::RotateRefByDegreesY(2.0f);  break;
-						case pir::ConsoleSwitch("y5"):    pir::RotateRefByDegreesY(5.0f);  break;
-						case pir::ConsoleSwitch("y10"):   pir::RotateRefByDegreesY(10.0f); break;
-						case pir::ConsoleSwitch("y15"):   pir::RotateRefByDegreesY(15.0f); break;
-						case pir::ConsoleSwitch("y30"):   pir::RotateRefByDegreesY(30.0f); break;
-
-						// angle y negative
-						case pir::ConsoleSwitch("y-0.1"): pir::RotateRefByDegreesY(-0.1f); break;
-						case pir::ConsoleSwitch("y-0.5"): pir::RotateRefByDegreesY(-0.5f); break;
-						case pir::ConsoleSwitch("y-1"):   pir::RotateRefByDegreesY(-1.0f); break;
-						case pir::ConsoleSwitch("y-5"):   pir::RotateRefByDegreesY(-5.0f); break;
-						case pir::ConsoleSwitch("y-10"):  pir::RotateRefByDegreesY(-10.0f); break;
-
-						// angle x
+						// modify x angle
+						case pir::ConsoleSwitch("xc"):  pir::RotateRefByDegreesX(placeinred.fRotateDegreesCustomX);  break;
+						case pir::ConsoleSwitch("x-c"):  pir::RotateRefByDegreesX(-placeinred.fRotateDegreesCustomX);  break;
 						case pir::ConsoleSwitch("x0.1"):  pir::RotateRefByDegreesX(0.1f);  break;
 						case pir::ConsoleSwitch("x0.5"):  pir::RotateRefByDegreesX(0.5f);  break;
 						case pir::ConsoleSwitch("x1"):    pir::RotateRefByDegreesX(1.0f);  break;
@@ -1020,13 +1045,57 @@ extern "C" {
 						case pir::ConsoleSwitch("x10"):   pir::RotateRefByDegreesX(10.0f); break;
 						case pir::ConsoleSwitch("x15"):   pir::RotateRefByDegreesX(15.0f); break;
 						case pir::ConsoleSwitch("x30"):   pir::RotateRefByDegreesX(30.0f); break;
-
-						// angle x negative
+						case pir::ConsoleSwitch("x45"):   pir::RotateRefByDegreesX(45.0f); break;
 						case pir::ConsoleSwitch("x-0.1"): pir::RotateRefByDegreesX(-0.1f); break;
 						case pir::ConsoleSwitch("x-0.5"): pir::RotateRefByDegreesX(-0.5f); break;
 						case pir::ConsoleSwitch("x-1"):   pir::RotateRefByDegreesX(-1.0f); break;
 						case pir::ConsoleSwitch("x-5"):   pir::RotateRefByDegreesX(-5.0f); break;
 						case pir::ConsoleSwitch("x-10"):  pir::RotateRefByDegreesX(-10.0f); break;
+						case pir::ConsoleSwitch("x-15"):  pir::RotateRefByDegreesX(-15.0f); break;
+						case pir::ConsoleSwitch("x-30"):  pir::RotateRefByDegreesX(-30.0f); break;
+						case pir::ConsoleSwitch("x-45"):  pir::RotateRefByDegreesX(-45.0f); break;
+
+						// modify y angle
+						case pir::ConsoleSwitch("yc"):  pir::RotateRefByDegreesY(placeinred.fRotateDegreesCustomY);  break;
+						case pir::ConsoleSwitch("y-c"):  pir::RotateRefByDegreesY(-placeinred.fRotateDegreesCustomY);  break;
+						case pir::ConsoleSwitch("y0.1"):  pir::RotateRefByDegreesY(0.1f);  break;
+						case pir::ConsoleSwitch("y0.5"):  pir::RotateRefByDegreesY(0.5f);  break;
+						case pir::ConsoleSwitch("y1"):    pir::RotateRefByDegreesY(1.0f);  break;
+						case pir::ConsoleSwitch("y2"):    pir::RotateRefByDegreesY(2.0f);  break;
+						case pir::ConsoleSwitch("y5"):    pir::RotateRefByDegreesY(5.0f);  break;
+						case pir::ConsoleSwitch("y10"):   pir::RotateRefByDegreesY(10.0f); break;
+						case pir::ConsoleSwitch("y15"):   pir::RotateRefByDegreesY(15.0f); break;
+						case pir::ConsoleSwitch("y30"):   pir::RotateRefByDegreesY(30.0f); break;
+						case pir::ConsoleSwitch("y45"):   pir::RotateRefByDegreesY(45.0f); break;
+						case pir::ConsoleSwitch("y-0.1"): pir::RotateRefByDegreesY(-0.1f); break;
+						case pir::ConsoleSwitch("y-0.5"): pir::RotateRefByDegreesY(-0.5f); break;
+						case pir::ConsoleSwitch("y-1"):   pir::RotateRefByDegreesY(-1.0f); break;
+						case pir::ConsoleSwitch("y-5"):   pir::RotateRefByDegreesY(-5.0f); break;
+						case pir::ConsoleSwitch("y-10"):  pir::RotateRefByDegreesY(-10.0f); break;
+						case pir::ConsoleSwitch("y-15"):  pir::RotateRefByDegreesY(-15.0f); break;
+						case pir::ConsoleSwitch("y-30"):  pir::RotateRefByDegreesY(-30.0f); break;
+						case pir::ConsoleSwitch("y-45"):  pir::RotateRefByDegreesY(-45.0f); break;
+
+						// modify z angle
+						case pir::ConsoleSwitch("zc"):  pir::RotateRefByDegreesZ(placeinred.fRotateDegreesCustomZ);  break;
+						case pir::ConsoleSwitch("z-c"):  pir::RotateRefByDegreesZ(-placeinred.fRotateDegreesCustomZ);  break;
+						case pir::ConsoleSwitch("z0.1"):  pir::RotateRefByDegreesZ(0.1f);  break;
+						case pir::ConsoleSwitch("z0.5"):  pir::RotateRefByDegreesZ(0.5f);  break;
+						case pir::ConsoleSwitch("z1"):    pir::RotateRefByDegreesZ(1.0f);  break;
+						case pir::ConsoleSwitch("z2"):    pir::RotateRefByDegreesZ(2.0f);  break;
+						case pir::ConsoleSwitch("z5"):    pir::RotateRefByDegreesZ(5.0f);  break;
+						case pir::ConsoleSwitch("z10"):   pir::RotateRefByDegreesZ(10.0f); break;
+						case pir::ConsoleSwitch("z15"):   pir::RotateRefByDegreesZ(15.0f); break;
+						case pir::ConsoleSwitch("z30"):   pir::RotateRefByDegreesZ(30.0f); break;
+						case pir::ConsoleSwitch("z45"):   pir::RotateRefByDegreesZ(45.0f); break;
+						case pir::ConsoleSwitch("z-0.1"): pir::RotateRefByDegreesZ(-0.1f); break;
+						case pir::ConsoleSwitch("z-0.5"): pir::RotateRefByDegreesZ(-0.5f); break;
+						case pir::ConsoleSwitch("z-1"):   pir::RotateRefByDegreesZ(-1.0f); break;
+						case pir::ConsoleSwitch("z-5"):   pir::RotateRefByDegreesZ(-5.0f); break;
+						case pir::ConsoleSwitch("z-10"):  pir::RotateRefByDegreesZ(-10.0f); break;
+						case pir::ConsoleSwitch("z-15"):  pir::RotateRefByDegreesZ(-15.0f); break;
+						case pir::ConsoleSwitch("z-30"):  pir::RotateRefByDegreesZ(-30.0f); break;
+						case pir::ConsoleSwitch("z-45"):  pir::RotateRefByDegreesZ(-45.0f); break;
 
 						//scale up							  				     
 						case pir::ConsoleSwitch("scaleup1"):	 pir::ModCurrentRefScale(1.0100f); break;
@@ -1059,10 +1128,10 @@ extern "C" {
 
 
 						// show help
-						case pir::ConsoleSwitch("?"):            pir::ConsolePrint(ConsoleHelpMSG); break;
-						case pir::ConsoleSwitch("help"):         pir::ConsolePrint(ConsoleHelpMSG); break;
+						case pir::ConsoleSwitch("?"):            pir::ConsolePrint(placeinred.ConsoleHelpMSG); break;
+						case pir::ConsoleSwitch("help"):         pir::ConsolePrint(placeinred.ConsoleHelpMSG); break;
 
-						default: pir::ConsolePrint(ConsoleHelpMSG);  break;
+						default: pir::ConsolePrint(placeinred.ConsoleHelpMSG);  break;
 					}
 
 					return true;
@@ -1072,6 +1141,176 @@ extern "C" {
 			pirlog("Failed to execute the console command!");
 			return false;
 		}
+		*/
+
+		//called every time the console command runs
+		static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, double* result, void* opcodeOffsetPtr)
+		{
+			if (!placeinred.GetConsoleArg_Native || !GetConsoleArg.ptr || (GetConsoleArg.r32 == 0)) {
+				pirlog("Failed to execute the console command!");
+				return false;
+			}
+
+			std::array<char, 4096> param1{}; // zeroed
+			std::array<char, 4096> param2{}; // zeroed
+
+			bool consoleresult = placeinred.GetConsoleArg_Native(
+				paramInfo,
+				scriptData,
+				opcodeOffsetPtr,
+				thisObj,
+				containingObj,
+				scriptObj,
+				locals,
+				param1.data(),
+				param2.data()
+			);
+
+			// Force termination even if native writes garbage / no terminator
+			param1.back() = '\0';
+			param2.back() = '\0';
+
+			if (consoleresult && param1[0])
+			{
+				switch (ConsoleSwitch(param1.data()))
+				{
+					// debug and tests
+				case pir::ConsoleSwitch("dumprefs"):     pir::DumpCellRefs();         break;
+				case pir::ConsoleSwitch("dumpcmds"):     pir::DumpCmds();             break;
+				case pir::ConsoleSwitch("logref"):       pir::LogWSRef();             break;
+				case pir::ConsoleSwitch("print"):        pir::Toggle_ConsolePrint();  break;
+				case pir::ConsoleSwitch("sound"):        pir::PlayFileSound(param2.data());  break;
+				case pir::ConsoleSwitch("uisound"):      pir::PlayUISound(param2.data());    break;
+
+					//toggles
+				case pir::ConsoleSwitch("1"):            pir::Toggle_PlaceInRed();         break;
+				case pir::ConsoleSwitch("toggle"):       pir::Toggle_PlaceInRed();         break;
+				case pir::ConsoleSwitch("2"):            pir::Toggle_ObjectSnap();         break;
+				case pir::ConsoleSwitch("osnap"):        pir::Toggle_ObjectSnap();         break;
+				case pir::ConsoleSwitch("3"):            pir::Toggle_GroundSnap();         break;
+				case pir::ConsoleSwitch("gsnap"):        pir::Toggle_GroundSnap();         break;
+				case pir::ConsoleSwitch("4"):            pir::Toggle_SlowZoomAndRotate();  break;
+				case pir::ConsoleSwitch("slow"):         pir::Toggle_SlowZoomAndRotate();  break;
+				case pir::ConsoleSwitch("5"):            pir::Toggle_WorkshopSize();       break;
+				case pir::ConsoleSwitch("workshopsize"): pir::Toggle_WorkshopSize();       break;
+				case pir::ConsoleSwitch("6"):            pir::Toggle_Outlines();           break;
+				case pir::ConsoleSwitch("outlines"):     pir::Toggle_Outlines();           break;
+				case pir::ConsoleSwitch("7"):            pir::Toggle_Achievements();       break;
+				case pir::ConsoleSwitch("achievements"): pir::Toggle_Achievements();       break;
+				case pir::ConsoleSwitch("8"):            pir::ToggleWorkbenchMove();       break;
+				case pir::ConsoleSwitch("wb"):           pir::ToggleWorkbenchMove();       break;
+
+					//scale constants
+				case pir::ConsoleSwitch("scale1"):       pir::SetCurrentRefScale(1.0000f);  break;
+				case pir::ConsoleSwitch("scale10"):      pir::SetCurrentRefScale(9.9999f);  break;
+
+					// modify x angle
+				case pir::ConsoleSwitch("xc"):    pir::RotateRefByDegreesX(placeinred.fRotateDegreesCustomX);   break;
+				case pir::ConsoleSwitch("x-c"):   pir::RotateRefByDegreesX(-placeinred.fRotateDegreesCustomX);  break;
+				case pir::ConsoleSwitch("x0.1"):  pir::RotateRefByDegreesX(0.1f);   break;
+				case pir::ConsoleSwitch("x0.5"):  pir::RotateRefByDegreesX(0.5f);   break;
+				case pir::ConsoleSwitch("x1"):    pir::RotateRefByDegreesX(1.0f);   break;
+				case pir::ConsoleSwitch("x2"):    pir::RotateRefByDegreesX(2.0f);   break;
+				case pir::ConsoleSwitch("x5"):    pir::RotateRefByDegreesX(5.0f);   break;
+				case pir::ConsoleSwitch("x10"):   pir::RotateRefByDegreesX(10.0f);  break;
+				case pir::ConsoleSwitch("x15"):   pir::RotateRefByDegreesX(15.0f);  break;
+				case pir::ConsoleSwitch("x30"):   pir::RotateRefByDegreesX(30.0f);  break;
+				case pir::ConsoleSwitch("x45"):   pir::RotateRefByDegreesX(45.0f);  break;
+				case pir::ConsoleSwitch("x-0.1"): pir::RotateRefByDegreesX(-0.1f);  break;
+				case pir::ConsoleSwitch("x-0.5"): pir::RotateRefByDegreesX(-0.5f);  break;
+				case pir::ConsoleSwitch("x-1"):   pir::RotateRefByDegreesX(-1.0f);  break;
+				case pir::ConsoleSwitch("x-5"):   pir::RotateRefByDegreesX(-5.0f);  break;
+				case pir::ConsoleSwitch("x-10"):  pir::RotateRefByDegreesX(-10.0f); break;
+				case pir::ConsoleSwitch("x-15"):  pir::RotateRefByDegreesX(-15.0f); break;
+				case pir::ConsoleSwitch("x-30"):  pir::RotateRefByDegreesX(-30.0f); break;
+				case pir::ConsoleSwitch("x-45"):  pir::RotateRefByDegreesX(-45.0f); break;
+
+					// modify y angle
+				case pir::ConsoleSwitch("yc"):    pir::RotateRefByDegreesY(placeinred.fRotateDegreesCustomY);   break;
+				case pir::ConsoleSwitch("y-c"):   pir::RotateRefByDegreesY(-placeinred.fRotateDegreesCustomY);  break;
+				case pir::ConsoleSwitch("y0.1"):  pir::RotateRefByDegreesY(0.1f);   break;
+				case pir::ConsoleSwitch("y0.5"):  pir::RotateRefByDegreesY(0.5f);   break;
+				case pir::ConsoleSwitch("y1"):    pir::RotateRefByDegreesY(1.0f);   break;
+				case pir::ConsoleSwitch("y2"):    pir::RotateRefByDegreesY(2.0f);   break;
+				case pir::ConsoleSwitch("y5"):    pir::RotateRefByDegreesY(5.0f);   break;
+				case pir::ConsoleSwitch("y10"):   pir::RotateRefByDegreesY(10.0f);  break;
+				case pir::ConsoleSwitch("y15"):   pir::RotateRefByDegreesY(15.0f);  break;
+				case pir::ConsoleSwitch("y30"):   pir::RotateRefByDegreesY(30.0f);  break;
+				case pir::ConsoleSwitch("y45"):   pir::RotateRefByDegreesY(45.0f);  break;
+				case pir::ConsoleSwitch("y-0.1"): pir::RotateRefByDegreesY(-0.1f);  break;
+				case pir::ConsoleSwitch("y-0.5"): pir::RotateRefByDegreesY(-0.5f);  break;
+				case pir::ConsoleSwitch("y-1"):   pir::RotateRefByDegreesY(-1.0f);  break;
+				case pir::ConsoleSwitch("y-5"):   pir::RotateRefByDegreesY(-5.0f);  break;
+				case pir::ConsoleSwitch("y-10"):  pir::RotateRefByDegreesY(-10.0f); break;
+				case pir::ConsoleSwitch("y-15"):  pir::RotateRefByDegreesY(-15.0f); break;
+				case pir::ConsoleSwitch("y-30"):  pir::RotateRefByDegreesY(-30.0f); break;
+				case pir::ConsoleSwitch("y-45"):  pir::RotateRefByDegreesY(-45.0f); break;
+
+					// modify z angle
+				case pir::ConsoleSwitch("zc"):    pir::RotateRefByDegreesZ(placeinred.fRotateDegreesCustomZ);   break;
+				case pir::ConsoleSwitch("z-c"):   pir::RotateRefByDegreesZ(-placeinred.fRotateDegreesCustomZ);  break;
+				case pir::ConsoleSwitch("z0.1"):  pir::RotateRefByDegreesZ(0.1f);   break;
+				case pir::ConsoleSwitch("z0.5"):  pir::RotateRefByDegreesZ(0.5f);   break;
+				case pir::ConsoleSwitch("z1"):    pir::RotateRefByDegreesZ(1.0f);   break;
+				case pir::ConsoleSwitch("z2"):    pir::RotateRefByDegreesZ(2.0f);   break;
+				case pir::ConsoleSwitch("z5"):    pir::RotateRefByDegreesZ(5.0f);   break;
+				case pir::ConsoleSwitch("z10"):   pir::RotateRefByDegreesZ(10.0f);  break;
+				case pir::ConsoleSwitch("z15"):   pir::RotateRefByDegreesZ(15.0f);  break;
+				case pir::ConsoleSwitch("z30"):   pir::RotateRefByDegreesZ(30.0f);  break;
+				case pir::ConsoleSwitch("z45"):   pir::RotateRefByDegreesZ(45.0f);  break;
+				case pir::ConsoleSwitch("z-0.1"): pir::RotateRefByDegreesZ(-0.1f);  break;
+				case pir::ConsoleSwitch("z-0.5"): pir::RotateRefByDegreesZ(-0.5f);  break;
+				case pir::ConsoleSwitch("z-1"):   pir::RotateRefByDegreesZ(-1.0f);  break;
+				case pir::ConsoleSwitch("z-5"):   pir::RotateRefByDegreesZ(-5.0f);  break;
+				case pir::ConsoleSwitch("z-10"):  pir::RotateRefByDegreesZ(-10.0f); break;
+				case pir::ConsoleSwitch("z-15"):  pir::RotateRefByDegreesZ(-15.0f); break;
+				case pir::ConsoleSwitch("z-30"):  pir::RotateRefByDegreesZ(-30.0f); break;
+				case pir::ConsoleSwitch("z-45"):  pir::RotateRefByDegreesZ(-45.0f); break;
+
+					//scale up
+				case pir::ConsoleSwitch("scaleup1"):    pir::ModCurrentRefScale(1.0100f); break;
+				case pir::ConsoleSwitch("scaleup2"):    pir::ModCurrentRefScale(1.0200f); break;
+				case pir::ConsoleSwitch("scaleup5"):    pir::ModCurrentRefScale(1.0500f); break;
+				case pir::ConsoleSwitch("scaleup10"):   pir::ModCurrentRefScale(1.1000f); break;
+				case pir::ConsoleSwitch("scaleup25"):   pir::ModCurrentRefScale(1.2500f); break;
+				case pir::ConsoleSwitch("scaleup50"):   pir::ModCurrentRefScale(1.5000f); break;
+				case pir::ConsoleSwitch("scaleup100"):  pir::ModCurrentRefScale(2.0000f); break;
+
+					//scale down
+				case pir::ConsoleSwitch("scaledown1"):  pir::ModCurrentRefScale(0.9900f); break;
+				case pir::ConsoleSwitch("scaledown2"):  pir::ModCurrentRefScale(0.9800f); break;
+				case pir::ConsoleSwitch("scaledown5"):  pir::ModCurrentRefScale(0.9500f); break;
+				case pir::ConsoleSwitch("scaledown10"): pir::ModCurrentRefScale(0.9000f); break;
+				case pir::ConsoleSwitch("scaledown25"): pir::ModCurrentRefScale(0.7500f); break;
+				case pir::ConsoleSwitch("scaledown50"): pir::ModCurrentRefScale(0.5000f); break;
+				case pir::ConsoleSwitch("scaledown75"): pir::ModCurrentRefScale(0.2500f); break;
+
+					// lock and unlock
+				case pir::ConsoleSwitch("lock"):    pir::LockUnlockWSRef(0, 1); break;
+				case pir::ConsoleSwitch("l"):       pir::LockUnlockWSRef(0, 1); break;
+				case pir::ConsoleSwitch("lockq"):   pir::LockUnlockWSRef(0, 0); break;
+				case pir::ConsoleSwitch("unlock"):  pir::LockUnlockWSRef(1, 0); break;
+				case pir::ConsoleSwitch("u"):       pir::LockUnlockWSRef(1, 0); break;
+
+					// console name ref toggle
+				case pir::ConsoleSwitch("cnref"):   pir::Toggle_ConsoleNameRef(); break;
+
+					// show help
+				case pir::ConsoleSwitch("?"):       pir::ConsolePrint(placeinred.ConsoleHelpMSG); break;
+				case pir::ConsoleSwitch("help"):    pir::ConsolePrint(placeinred.ConsoleHelpMSG); break;
+
+				default:
+					pir::ConsolePrint(placeinred.ConsoleHelpMSG);
+					break;
+				}
+
+				return true;
+			}
+
+			pirlog("Failed to execute the console command!");
+			return false;
+		}
+
 
 		//attempt to create the console command
 		static bool PatchConsole(const char* hijacked_cmd_fullname)
@@ -1130,7 +1369,6 @@ extern "C" {
 				&& placeinred.J && placeinred.Y && placeinred.R && placeinred.CORRECT
 				&& placeinred.wstimer && placeinred.gsnap && placeinred.osnap && placeinred.outlines
 				&& WSSize.ptr && Zoom.ptr && Rotate.ptr && SetMotionType.ptr && WorkbenchSelection.ptr
-				&& placeinred.modAngleX && placeinred.modAngleY && placeinred.modAngleZ && placeinred.modAngleALL
 				)
 			{
 				/*
@@ -1170,28 +1408,24 @@ extern "C" {
 			placeinred.log.FormattedMessage("RC            :%p|Fallout4.exe+0x%08X", placeinred.RC, (uintptr_t)placeinred.RC - placeinred.FO4BaseAddr);
 			placeinred.log.FormattedMessage("CORRECT       :%p|Fallout4.exe+0x%08X", placeinred.CORRECT, (uintptr_t)placeinred.CORRECT - placeinred.FO4BaseAddr);
 			placeinred.log.FormattedMessage("CurrentWSRef  :%p|Fallout4.exe+0x%08X", CurrentWSRef.ptr, CurrentWSRef.r32);
-			placeinred.log.FormattedMessage("gsnap         :%p|Fallout4.exe+0x%08X", placeinred.gsnap, (uintptr_t)placeinred.gsnap - placeinred.FO4BaseAddr);
-			placeinred.log.FormattedMessage("osnap         :%p|Fallout4.exe+0x%08X", placeinred.osnap, (uintptr_t)placeinred.osnap - placeinred.FO4BaseAddr);
-			placeinred.log.FormattedMessage("outlines      :%p|Fallout4.exe+0x%08X", placeinred.outlines, (uintptr_t)placeinred.outlines - placeinred.FO4BaseAddr);
 			placeinred.log.FormattedMessage("FirstConsole  :%p|Fallout4.exe+0x%08X", FirstConsole.ptr, FirstConsole.r32);
 			placeinred.log.FormattedMessage("FirstObScript :%p|Fallout4.exe+0x%08X", FirstObScript.ptr, FirstObScript.r32);
 			placeinred.log.FormattedMessage("GetConsoleArg :%p|Fallout4.exe+0x%08X", GetConsoleArg.ptr, GetConsoleArg.r32);
 			placeinred.log.FormattedMessage("GetScale      :%p|Fallout4.exe+0x%08X", placeinred.GetScale_pattern, placeinred.GetScale_r32);
+			placeinred.log.FormattedMessage("GConsole      :%p|Fallout4.exe+0x%08X", gConsole.ptr, gConsole.r32);
+			placeinred.log.FormattedMessage("gsnap         :%p|Fallout4.exe+0x%08X", placeinred.gsnap, (uintptr_t)placeinred.gsnap - placeinred.FO4BaseAddr);
+			placeinred.log.FormattedMessage("osnap         :%p|Fallout4.exe+0x%08X", placeinred.osnap, (uintptr_t)placeinred.osnap - placeinred.FO4BaseAddr);
+			placeinred.log.FormattedMessage("outlines      :%p|Fallout4.exe+0x%08X", placeinred.outlines, (uintptr_t)placeinred.outlines - placeinred.FO4BaseAddr);
 			placeinred.log.FormattedMessage("SetScale      :%p|Fallout4.exe+0x%08X", placeinred.SetScale_pattern, placeinred.SetScale_s32);
-			placeinred.log.FormattedMessage("ModAngleX     :%p|Fallout4.exe+0x%08X", placeinred.modAngleXAddr, placeinred.modAngleXRel32);
-			placeinred.log.FormattedMessage("ModAngleY     :%p|Fallout4.exe+0x%08X", placeinred.modAngleYAddr, placeinred.modAngleYRel32);
-			placeinred.log.FormattedMessage("ModAngleZ     :%p|Fallout4.exe+0x%08X", placeinred.modAngleZAddr, placeinred.modAngleZRel32);
-			placeinred.log.FormattedMessage("ModAngleALL   :%p|Fallout4.exe+0x%08X", placeinred.modAngleALLAddr, placeinred.modAngleALLRel32);
-			placeinred.log.FormattedMessage("SetMotionType :%p|Fallout4.exe+0x%08X", SetMotionType.ptr, SetMotionType.r32);
 			placeinred.log.FormattedMessage("PlayFileSound :%p|Fallout4.exe+0x%08X", placeinred.PlaySound_File_pattern, placeinred.PlaySound_File_r32);
 			placeinred.log.FormattedMessage("PlayUISound   :%p|Fallout4.exe+0x%08X", placeinred.PlaySound_UI_pattern, placeinred.PlaySound_UI_r32);
-			placeinred.log.FormattedMessage("GConsole      :%p|Fallout4.exe+0x%08X", gConsole.ptr, gConsole.r32);
-			placeinred.log.FormattedMessage("Rotate        :%p|%p|orig %f|slow %f", Rotate.ptr, Rotate.addr, placeinred.fOriginalROTATE, placeinred.fSlowerROTATE);
+			placeinred.log.FormattedMessage("SetMotionType :%p|Fallout4.exe+0x%08X", SetMotionType.ptr, SetMotionType.r32);
 			placeinred.log.FormattedMessage("WBSelect      :%p|Fallout4.exe+0x%08X", WorkbenchSelection.ptr, WorkbenchSelection.r32);
 			placeinred.log.FormattedMessage("WSFloats      :%p|Fallout4.exe+0x%08X", WSSize.addr, WSSize.addr - placeinred.FO4BaseAddr);
 			placeinred.log.FormattedMessage("WSMode        :%p|Fallout4.exe+0x%08X", WSMode.ptr, WSMode.r32);
 			placeinred.log.FormattedMessage("WSSize        :%p|Fallout4.exe+0x%08X", WSSize.ptr, (uintptr_t)WSSize.ptr - placeinred.FO4BaseAddr);
 			placeinred.log.FormattedMessage("WSTimer       :%p|Fallout4.exe+0x%08X", placeinred.wstimer, (uintptr_t)placeinred.wstimer - placeinred.FO4BaseAddr);
+			placeinred.log.FormattedMessage("Rotate        :%p|%p|orig %f|slow %f", Rotate.ptr, Rotate.addr, placeinred.fOriginalROTATE, placeinred.fSlowerROTATE);
 			placeinred.log.FormattedMessage("Zoom          :%p|%p|orig %f|slow %f", Zoom.ptr, Zoom.addr, placeinred.fOriginalZOOM, placeinred.fSlowerZOOM);
 			placeinred.log.FormattedMessage("--------------------------------------------------------------------------------");
 		}
@@ -1200,23 +1434,22 @@ extern "C" {
 		static void ReadINI()
 		{
 			pirlog("Reading PlaceInRed.ini");
-
 			const char* section = "Main";
 
-			// Helper lambda for toggle settings (ALWAYS logs)
+			// Helper lambda for toggle settings
 			auto ApplyToggle = [&](const char* key, bool& currentFlag, auto toggleFunc, bool defaultEnabled)
 				{
-					std::string val = GetINIString(section, key);
-					bool wantEnabled = StringToBool(val, defaultEnabled);
+					std::string val = GetPluginINISettingAsString(section, key);
+					bool wantEnabled = GetBoolFromINIString(val, defaultEnabled);
 
 					if (wantEnabled != currentFlag)
 					{
 						toggleFunc(); // flips the flag and applies patch
-						placeinred.log.FormattedMessage(" %s = %d (toggled)", key, wantEnabled);
+						placeinred.log.FormattedMessage(" %s=%d (toggled)", key, wantEnabled);
 					}
 					else
 					{
-						placeinred.log.FormattedMessage(" %s = %d (%s)", key, wantEnabled, val.empty() ? "default" : "unchanged");
+						placeinred.log.FormattedMessage(" %s=%d (%s)", key, wantEnabled, val.empty() ? "hardcoded" : "unchanged");
 					}
 				};
 
@@ -1231,57 +1464,72 @@ extern "C" {
 
 			// ------------------- PrintConsoleMessages -------------------
 			{
-				std::string val = GetINIString(section, "PrintConsoleMessages", "1");
-				bool want = StringToBool(val, true);
+				std::string val = GetPluginINISettingAsString(section, "PrintConsoleMessages");
+				bool wantEnabled = GetBoolFromINIString(val, true);
 
-				if (want != placeinred.PrintConsoleMessages)
-					placeinred.PrintConsoleMessages = want;
-
-				placeinred.log.FormattedMessage(" PrintConsoleMessages = %d (%s)", want, val.empty() ? "default" : (want != placeinred.PrintConsoleMessages ? "changed" : "unchanged"));
+				if (wantEnabled != placeinred.PrintConsoleMessages)
+				{
+					placeinred.PrintConsoleMessages = wantEnabled;
+					placeinred.log.FormattedMessage(" PrintConsoleMessages=%d (toggled)", wantEnabled);
+				}
+				else
+				{
+					placeinred.log.FormattedMessage(" PrintConsoleMessages=%d (%s)", wantEnabled, val.empty() ? "hardcoded" : "unchanged");
+				}
 			}
 
-			// ------------------- Custom slow speeds -------------------
+			// ------------------- Slow mode parameters -------------------
 			{
-				//fSlowerROTATE
-				std::string rotStr = GetINIString(section, "fSlowerROTATE");
+				std::string rotStr = GetPluginINISettingAsString(section, "fSlowerROTATE");
 				if (!rotStr.empty())
 				{
 					float f = FloatFromString(rotStr, 0.01f, 50.0f, 0.0f);
-					placeinred.fSlowerROTATE = (f > 0.0f) ? f : 0.5f;
+					placeinred.fSlowerROTATE = (f > 0.0f) ? f : 0.5000f;
 				}
+				placeinred.log.FormattedMessage(" fSlowerROTATE=%.4f (%s)", placeinred.fSlowerROTATE, rotStr.empty() ? "hardcoded" : "ini");
 
-				placeinred.log.FormattedMessage(" fSlowerROTATE = %.3f (%s)", placeinred.fSlowerROTATE, rotStr.empty() ? "default" : "ini");
-
-				//fSlowerZOOM
-				std::string zoomStr = GetINIString(section, "fSlowerZOOM");
+				std::string zoomStr = GetPluginINISettingAsString(section, "fSlowerZOOM");
 				if (!zoomStr.empty())
 				{
 					float f = FloatFromString(zoomStr, 0.01f, 50.0f, 0.0f);
-					placeinred.fSlowerZOOM = (f > 0.0f) ? f : 1.000f;
+					placeinred.fSlowerZOOM = (f > 0.0f) ? f : 1.0000f;
 				}
+				placeinred.log.FormattedMessage(" fSlowerZOOM=%.4f (%s)", placeinred.fSlowerZOOM, zoomStr.empty() ? "hardcoded" : "ini");
 
-				placeinred.log.FormattedMessage(" fSlowerZOOM = %.3f (%s)", placeinred.fSlowerZOOM, zoomStr.empty() ? "default" : "ini");
-
-				//fRotateDegreesCustom
-				std::string fRotateDegreesCustomStr = GetINIString(section, "fRotateDegreesCustom");
-				if (!fRotateDegreesCustomStr.empty())
-				{
-					float f = FloatFromString(fRotateDegreesCustomStr, 0.001f, 360.000f, 7.000f);
-					placeinred.fRotateDegreesCustom = (f > 0.0f) ? f : 7.000f;
-				}
-
-				placeinred.log.FormattedMessage(" fRotateDegreesCustom = %.3f (%s)", placeinred.fRotateDegreesCustom, zoomStr.empty() ? "default" : "ini");
-			}
-
-			// ------------------- Slow zoom/rotate toggle -------------------
-			{
-				std::string val = GetINIString(section, "SLOW_ENABLED");
-				bool wantSlow = StringToBool(val, false);
+				std::string val = GetPluginINISettingAsString(section, "SLOW_ENABLED");
+				bool wantSlow = GetBoolFromINIString(val, false);
 
 				if (wantSlow != placeinred.SLOW_ENABLED)
 					pir::Toggle_SlowZoomAndRotate();
 
-				placeinred.log.FormattedMessage(" SLOW_ENABLED = %d (%s)", wantSlow, val.empty() ? "default" : (wantSlow != placeinred.SLOW_ENABLED ? "toggled" : "unchanged"));
+				placeinred.log.FormattedMessage(" SLOW_ENABLED=%d (%s)", wantSlow, val.empty() ? "hardcoded" : (wantSlow != placeinred.SLOW_ENABLED ? "toggled" : "unchanged"));
+			}
+
+			// ------------------- Custom rotate degrees -------------------
+			{
+				std::string xStr = GetPluginINISettingAsString(section, "fRotateDegreesCustomX");
+				if (!xStr.empty())
+				{
+					float f = FloatFromString(xStr, 0.001f, 360.000f, 7.2000f);
+					placeinred.fRotateDegreesCustomX = (f > 0.0f) ? f : 7.2000f;
+				}
+				placeinred.log.FormattedMessage(" fRotateDegreesCustomX=%.4f (%s)", placeinred.fRotateDegreesCustomX, xStr.empty() ? "hardcoded" : "ini");
+
+				std::string yStr = GetPluginINISettingAsString(section, "fRotateDegreesCustomY");
+				if (!yStr.empty())
+				{
+					float f = FloatFromString(yStr, 0.001f, 360.000f, 7.2000f);
+					placeinred.fRotateDegreesCustomY = (f > 0.0f) ? f : 7.2000f;
+				}
+				placeinred.log.FormattedMessage(" fRotateDegreesCustomY=%.4f (%s)", placeinred.fRotateDegreesCustomY, yStr.empty() ? "hardcoded" : "ini");
+
+				std::string zStr = GetPluginINISettingAsString(section, "fRotateDegreesCustomZ");
+				if (!zStr.empty())
+				{
+					float f = FloatFromString(zStr, 0.001f, 360.000f, 7.2000f);
+					placeinred.fRotateDegreesCustomZ = (f > 0.0f) ? f : 7.2000f;
+				}
+				placeinred.log.FormattedMessage(" fRotateDegreesCustomZ=%.4f (%s)", placeinred.fRotateDegreesCustomZ, zStr.empty() ? "hardcoded" : "ini");
 			}
 
 			pirlog("Finished reading INI.");
@@ -1327,12 +1575,14 @@ extern "C" {
 
 		static void InitPIR()
 		{
+			// launch async pattern searches
 			pirlog("Multithreaded search for memory patterns.");
 			std::vector<std::future<void>> vecFutures;
 
-			vecFutures.emplace_back(FindPatternAsync(placeinred.cnref_call, "FF 90 D0 01 00 00 48 89 74 24 40 4C 8D 05 ? ? ? ? 4C"));
+			
+			vecFutures.emplace_back(FindPatternAsync(placeinred.achievements, "48 83 EC 28 C6 44 24 ? 00 84 D2 74 1C 48"));
+			vecFutures.emplace_back(FindPatternAsync(placeinred.cnref_original_call_pattern, "FF 90 D0 01 00 00 48 89 74 24 40 4C 8D 05 ? ? ? ? 4C"));
 			vecFutures.emplace_back(FindPatternAsync(placeinred.cnref_GetRefName_pattern, "E8 ? ? ? ? 4C 8B 05 ? ? ? ? 48 8D 4C 24 40 4C 8B C8 BA 00 01 00 00 E8 ? ? ? ? 83"));
-			vecFutures.emplace_back(FindPatternAsync(CurrentWSRef.ptr, "48 8B 1D ? ? ? ? 4C 8D 24 C3 49 3B DC 0F 84 ? ? ? ? 66"));
 			vecFutures.emplace_back(FindPatternAsync(placeinred.A, "C6 05 ? ? ? ? 01 84 C0 75 A9 B1 02"));
 			vecFutures.emplace_back(FindPatternAsync(placeinred.B, "B2 01 88 15 ? ? ? ? EB 04 84 D2 74 07"));
 			vecFutures.emplace_back(FindPatternAsync(placeinred.C, "0F B6 05 ? ? ? ? 44 0F B6 A5 ? ? ? ? 84 C0 75"));
@@ -1343,18 +1593,15 @@ extern "C" {
 			vecFutures.emplace_back(FindPatternAsync(placeinred.H, "74 11 40 84 F6 74 0C 48 8D ? ? 49 8B ? E8"));
 			vecFutures.emplace_back(FindPatternAsync(placeinred.J, "74 35 48 8B B5 ? ? ? ? 48 8B CE E8 ? ? ? ? 84 C0 75"));
 			vecFutures.emplace_back(FindPatternAsync(placeinred.CORRECT, "C6 05 ? ? ? ? 01 40 84 F6 74 09 80 3D ? ? ? ? 00 75 ? 80 3D"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.achievements, "48 83 EC 28 C6 44 24 ? 00 84 D2 74 1C 48"));
 			vecFutures.emplace_back(FindPatternAsync(placeinred.gsnap, "0F 86 ? ? ? ? 41 8B 4E 34 49 B8"));
 			vecFutures.emplace_back(FindPatternAsync(placeinred.osnap, "F3 0F 10 35 ? ? ? ? 0F 28 C6 48 ? ? ? ? ? ? 33 C0"));
 			vecFutures.emplace_back(FindPatternAsync(placeinred.outlines, "C6 05 ? ? ? ? 01 88 15 ? ? ? ? 76 13 48 8B 05"));
 			vecFutures.emplace_back(FindPatternAsync(placeinred.R, "89 05 ? ? ? ? C6 05 ? ? ? ? 01 48 83 C4 68 C3"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.RC, "E8 ? ? ? ? 83 3D ? ? ? ? 00 0F 87 ? ? ? ? 48 8B 03 48 8B CB FF 90 ? ? ? ? 48"));
 			vecFutures.emplace_back(FindPatternAsync(placeinred.wstimer, "0F 85 AB 00 00 00 F3 0F 10 05 ? ? ? ? 41 0F 2E"));
 			vecFutures.emplace_back(FindPatternAsync(placeinred.Y, "8B 58 14 48 8D 4C 24 30 8B D3 45 33 C0 E8"));
 			vecFutures.emplace_back(FindPatternAsync(FirstConsole.ptr, "48 8D 1D ? ? ? ? 48 8D 35 ? ? ? ? 66 90 48 8B 53 F8"));
 			vecFutures.emplace_back(FindPatternAsync(FirstObScript.ptr, "48 8D 1D ? ? ? ? 4C 8D 35 ? ? ? ? 0F 1F 40 00 0F 1F 84 00 00 00 00 00"));
 			vecFutures.emplace_back(FindPatternAsync(GetConsoleArg.ptr, "4C 89 4C 24 20 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57"));
-			vecFutures.emplace_back(FindPatternAsync(Rotate.ptr, "F3 0F 10 05 ? ? ? ? ? ? ? ? ? ? ? ? 84 C9 75 07 0F 57 05"));
 			vecFutures.emplace_back(FindPatternAsync(placeinred.GetScale_pattern, "66 89 BB 08 01 00 00 E8 ? ? ? ? 48 8B 0D ? ? ? ? 0F 28 F0 48"));
 			vecFutures.emplace_back(FindPatternAsync(placeinred.SetScale_pattern, "E8 ? ? ? ? 40 84 F6 75 07 81 63 10 FF FF DF FF 33 ED"));
 			vecFutures.emplace_back(FindPatternAsync(placeinred.PlaySound_File_pattern, "48 8B C4 48 89 58 08 57 48 81 EC 50 01 00 00 8B FA C7 40 18 FF FF FF FF 48"));
@@ -1362,16 +1609,13 @@ extern "C" {
 			vecFutures.emplace_back(FindPatternAsync(SetMotionType.ptr, "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 83 EC 50 45 32 E4 41 8D 41 FF"));
 			vecFutures.emplace_back(FindPatternAsync(WSMode.ptr, "80 3D ? ? ? ? 00 74 0E C6 07 02 48 8B 5C 24 30 48 83 C4 20 5F C3"));
 			vecFutures.emplace_back(FindPatternAsync(WSSize.ptr, "01 05 ? ? ? ? 8B 44 24 58 01 05 ? ? ? ? 85 D2 0F 84"));
-			vecFutures.emplace_back(FindPatternAsync(Zoom.ptr, "F3 0F 10 0D ? ? ? ? 0F 29 74 24 20 F3 0F 10 35"));
 			vecFutures.emplace_back(FindPatternAsync(gConsole.ptr, "48 8D 05 ? ? ? ? 48 89 2D ? ? ? ? 48 89 05 ? ? ? ? 89 2D ? ? ? ? 40 88 2D ? ? ? ? 48"));
 			vecFutures.emplace_back(FindPatternAsync(gDataHandler.ptr, "48 83 3D ? ? ? ? 00 4D 8B F1 41 0F B6 F0 48 8B FA 48 8B D9 0F 84 ? ? ? ? 80 3D ? ? ? ? 00 48"));
 			vecFutures.emplace_back(FindPatternAsync(WorkbenchSelection.ptr, "0F B6 84 02 ? ? ? ? 8B 8C 82 ? ? ? ? 48 03 CA FF E1 B0 01 48 83 C4 20 5B C3"));
-
-			vecFutures.emplace_back(FindPatternAsync(placeinred.modAngleXAddr, "40 53 48 83 EC 30 0F 29 74 24 20 48 8B D9 0F 28 F1 0F 2E B1 C0 00 00 00"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.modAngleYAddr, "40 53 48 83 EC 30 0F 29 74 24 20 48 8B D9 0F 28 F1 0F 2E B1 C4 00 00 00"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.modAngleZAddr, "40 53 48 83 EC 30 0F 29 74 24 20 48 8B D9 0F 28 F1 0F 2E B1 C8 00 00 00"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.modAngleALLAddr, "48 85 C9 0F 84 ? ? ? ? 53 48 83 EC ? F3 0F 59 15 ? ? ? ? 48 8B D9 0F BE D2 48"));
-
+			vecFutures.emplace_back(FindPatternAsync(CurrentWSRef.ptr, "48 8B 1D ? ? ? ? 4C 8D 24 C3 49 3B DC 0F 84 ? ? ? ? 66"));
+			vecFutures.emplace_back(FindPatternAsync(Zoom.ptr, "F3 0F 10 0D ? ? ? ? 0F 29 74 24 20 F3 0F 10 35"));
+			vecFutures.emplace_back(FindPatternAsync(Rotate.ptr, "F3 0F 10 05 ? ? ? ? ? ? ? ? ? ? ? ? 84 C9 75 07 0F 57 05"));
+			vecFutures.emplace_back(FindPatternAsync(placeinred.RC, "E8 ? ? ? ? 83 3D ? ? ? ? 00 0F 87 ? ? ? ? 48 8B 03 48 8B CB FF 90 ? ? ? ? 48"));
 
 			// Wait for all async tasks to complete
 			for (auto& future : vecFutures) {
@@ -1404,7 +1648,7 @@ extern "C" {
 			}
 
 			//consolenameref
-			if (placeinred.cnref_call && placeinred.cnref_GetRefName_pattern) {
+			if (placeinred.cnref_original_call_pattern && placeinred.cnref_GetRefName_pattern) {
 				placeinred.cnref_GetRefName_r32 = GetRel32FromPattern(placeinred.cnref_GetRefName_pattern, 0x01, 0x05, 0x00); //the good function
 				placeinred.cnref_GetRefName_addr = placeinred.FO4BaseAddr + (uintptr_t)placeinred.cnref_GetRefName_r32; // good function full address
 			}
@@ -1496,31 +1740,6 @@ extern "C" {
 				RelocAddr <_PlayFileSound_Native> PlayFileSound_Native(placeinred.PlaySound_File_r32);
 				placeinred.PlaySound_File_func = PlayFileSound_Native;
 			}
-
-			// modangle functions
-			if (placeinred.modAngleXAddr && placeinred.modAngleYAddr && placeinred.modAngleZAddr) {
-
-				//modangle x
-				placeinred.modAngleXRel32 = uintptr_t(placeinred.modAngleXAddr) - placeinred.FO4BaseAddr;
-				RelocAddr <_ModAngleX> GimmeModAngleX(placeinred.modAngleXRel32);
-				placeinred.modAngleX = GimmeModAngleX;
-
-				//modangle y
-				placeinred.modAngleYRel32 = uintptr_t(placeinred.modAngleYAddr) - placeinred.FO4BaseAddr;
-				RelocAddr <_ModAngleY> GimmeModAngleY(placeinred.modAngleYRel32);
-				placeinred.modAngleY = GimmeModAngleY;
-
-				//modangle z
-				placeinred.modAngleZRel32 = uintptr_t(placeinred.modAngleZAddr) - placeinred.FO4BaseAddr;
-				RelocAddr <_ModAngleZ> GimmeModAngleZ(placeinred.modAngleZRel32);
-				placeinred.modAngleZ = GimmeModAngleZ;
-
-				//modangle ALL
-				placeinred.modAngleALLRel32 = uintptr_t(placeinred.modAngleALLAddr) - placeinred.FO4BaseAddr;
-				RelocAddr <_ModAngleALL> GimmeModAngleALL(placeinred.modAngleALLRel32);
-				placeinred.modAngleALL = GimmeModAngleALL;
-			}
-
 		}
 
 	}

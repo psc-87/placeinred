@@ -7,6 +7,7 @@
 #include <cmath>
 #include <vector>
 #include <future> // For std::async and std::future
+#include <array>
 
 
 // log wrapper with function name
@@ -29,14 +30,54 @@ typedef void  (*_PlayUISound_Native)   (const char*);
 typedef void  (*_PlayFileSound_Native) (const char*);
 typedef float (*_GetScale_Native)      (TESObjectREFR* objRef);
 typedef void  (*_SetScale_Native)      (TESObjectREFR* objRef, float scale);
-typedef void (*_ModAngleX) (TESObjectREFR* objRef, float scale);
-typedef void (*_ModAngleY) (TESObjectREFR* objRef, float scale);
-typedef void (*_ModAngleZ) (TESObjectREFR* objRef, float scale);
-typedef void (*_ModAngleALL) (TESObjectREFR* objRef, int8_t axis, float scale);
+
+// Struct to store a pointer, rel32, and final address, and optionally an ObScriptCommand pointers
+// needed a lot of these so made a struct
+struct SimpleFinder
+{
+	uintptr_t* ptr = nullptr; // pointer to a pattern match
+	SInt32           r32 = 0; // rel32 of what were finding
+	uintptr_t        addr = 0; // final address
+	ObScriptCommand* cmd = nullptr; // for first console commands
+};
 
 class PlaceInRed {
 
 public:
+
+	// help message
+	const char* ConsoleHelpMSG =
+	{
+		"PlaceInRed (pir) — Command Reference\n"
+		"-----------------------------------\n"
+		"\n"
+		"Toggles:\n"
+		"  pir toggle            Toggle Place in Red\n"
+		"  pir osnap             Toggle object snapping\n"
+		"  pir gsnap             Toggle ground snapping\n"
+		"  pir slow              Toggle slower rotate/zoom speed\n"
+		"  pir workshopsize      Toggle unlimited workshop build size\n"
+		"  pir outlines          Toggle object outlines\n"
+		"  pir achievements      Toggle achievements with mods\n"
+		"Scaling:\n"
+		"  pir scaleup<N>        Scale up by N percent\n"
+		"  pir scaledown<N>      Scale down by N percent\n"
+		"    N = 1, 2, 5, 10, 25, 50, 75, 100\n"
+		"Rotation (Degrees):\n"
+		"  pir x<N>              Rotate +N degrees (X axis)\n"
+		"  pir x-<N>             Rotate -N degrees (X axis)\n"
+		"  pir y<N>              Rotate +N degrees (Y axis)\n"
+		"  pir y-<N>             Rotate -N degrees (Y axis)\n"
+		"  pir z<N>              Rotate +N degrees (Z axis)\n"
+		"  pir z-<N>             Rotate -N degrees (Z axis)\n"
+		"    N = 0.1, 0.5, 1, 2, 5, 10, 15, 30, 45\n"
+		"Locking:\n"
+		"  pir lock              Lock object (disable physics)\n"
+		"  pir lockq             Lock object (no sound fx)\n"
+		"  pir unlock            Unlock object (motiontype dynamic)\n"
+		"Workshop:\n"
+		"  pir wb                Toggle allow moving workbench\n"
+	};
 
 	// track plugin performance
 	UInt64 start_tickcount = GetTickCount64(); // set during initialization
@@ -64,11 +105,13 @@ public:
 	bool    ACHIEVEMENTS_ENABLED = false; //pir 7
 	bool    ConsoleNameRef_ENABLED = false; //pir cnref
 	bool    PrintConsoleMessages = true; // updated later to ini value and when toggled
-	Float32 fOriginalZOOM = 10.0F;  //updated later to fItemHoldDistantSpeed:Workshop
-	Float32 fOriginalROTATE = 5.0F; //updated later to fItemRotationSpeed:Workshop
-	Float32 fSlowerZOOM = 1.0F;     //updated later to plugin ini value
-	Float32 fSlowerROTATE = 0.5F;   //updated later to plugin ini value
-	Float32 fRotateDegreesCustom = 7.000F;   //updated later to plugin ini value
+	Float32 fOriginalZOOM = 10.0000F;  //updated later to fItemHoldDistantSpeed:Workshop
+	Float32 fOriginalROTATE = 5.0000F; //updated later to fItemRotationSpeed:Workshop
+	Float32 fSlowerZOOM = 1.0000F;     //updated later to plugin ini value
+	Float32 fSlowerROTATE = 0.5000F;   //updated later to plugin ini value
+	Float32 fRotateDegreesCustomX = 7.2000F;   //updated later to plugin ini value
+	Float32 fRotateDegreesCustomY = 7.2000F;   //updated later to plugin ini value
+	Float32 fRotateDegreesCustomZ = 7.2000F;   //updated later to plugin ini value
 
 	// pointers
 	uintptr_t* A = nullptr;
@@ -135,21 +178,6 @@ public:
 	uintptr_t*        SetScale_pattern = nullptr;
 	SInt32            SetScale_s32 = 0;
 
-	// ModAngle function pointers and related data
-	_ModAngleX  modAngleX = nullptr;
-	_ModAngleY  modAngleY = nullptr;
-	_ModAngleZ  modAngleZ = nullptr;
-	uintptr_t*  modAngleXAddr = nullptr;
-	uintptr_t*  modAngleYAddr = nullptr;
-	uintptr_t*  modAngleZAddr = nullptr;
-	SInt32      modAngleXRel32 = 0;
-	SInt32      modAngleYRel32 = 0;
-	SInt32      modAngleZRel32 = 0;
-
-	_ModAngleALL  modAngleALL = nullptr;
-	uintptr_t*  modAngleALLAddr = nullptr;
-	SInt32      modAngleALLRel32 = 0;
-
 	// play sound function pointers and related data
 	uintptr_t*            PlaySound_UI_pattern = nullptr;
 	SInt32                PlaySound_UI_r32 = 0;
@@ -159,7 +187,7 @@ public:
 	_PlayFileSound_Native PlaySound_File_func = nullptr;
 
 	// consolenameref function pointers and related data
-	uintptr_t* cnref_call = nullptr; // the call when references are clicked
+	uintptr_t* cnref_original_call_pattern = nullptr; // the call when references are clicked
 	uintptr_t* cnref_GetRefName_pattern = nullptr; // the good function we will point to instead
 	uintptr_t  cnref_GetRefName_addr = 0; // the good function full address
 	SInt32     cnref_GetRefName_r32 = 0; // rel32 of the good function
@@ -193,15 +221,7 @@ private:
 
 
 
-// Struct to store a pointer, rel32, and final address, and optionally an ObScriptCommand pointers
-// needed a lot of these so made a struct
-struct SimpleFinder
-{
-	uintptr_t* ptr = nullptr; // pointer to a pattern match
-	SInt32           r32 = 0; // rel32 of what were finding
-	uintptr_t        addr = 0; // final address
-	ObScriptCommand* cmd = nullptr; // for first console commands
-};
+
 
 /* helpful notes
   interesting bytes starting at bWSMode (Fallout4.exe+2E74994)
