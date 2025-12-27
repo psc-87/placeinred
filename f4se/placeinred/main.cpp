@@ -88,27 +88,6 @@ namespace pir {
 extern "C" {
 	namespace pir {
 
-		//static const char* ConsoleHelpMSG =
-		//{
-		//  "PlaceInRed (pir) usage:\n"
-		//  "pir toggle       (pir 1) toggle place in R\n"
-		//  "pir osnap        (pir 2) toggle object snapping\n"
-		//  "pir gsnap        (pir 3) toggle ground snapping\n"
-		//  "pir slow         (pir 4) toggle slower object rotation and zoom speed\n"
-		//  "pir workshopsize (pir 5) toggle unlimited workshop build size\n"
-		//  "pir outlines     (pir 6) toggle object outlines\n"
-		//  "pir achievements (pir 7) toggle achievement with mods\n"
-		//  "pir scaleup1     (and 2, 5, 10, 25, 50, 100) scale up percent\n"
-		//  "pir scaledown1   (and 2, 5, 10, 25, 50, 75) scale down percent\n"
-		//  "pir xc/yc/zc      modify angle custom +degrees\n"
-		//  "pir x-c/y-c/z-c   modify angle custom -degrees\n"
-		//  "pir lock         (pir l) lock object in place (motiontype keyframed)\n"
-		//  "pir unlock       (pir u) unlock object (motiontype dynamic)\n"
-		//  "pir unlock       (pir u) unlock object (motiontype dynamic)\n"
-		//  "pir wb                   allow moving workbench"
-		//};
-
-
 		// string to float
 		static Float32 FloatFromString(std::string fString, Float32 min = 0.001, Float32 max = 999.999, Float32 error = 0)
 		{
@@ -127,26 +106,6 @@ extern "C" {
 			else {
 				return error;
 			}
-		}
-
-		// return the same char array with '\r' '\n' and '|' removed
-		static char* StripNewLinesAndPipes(const char* str) {
-			size_t len = strlen(str);
-			char* newStr = new char[len + 1]; // Allocate memory for the new string
-		
-			const char* src = str;
-			char* dst = newStr;
-		
-			while (*src) {
-				if ((*src != '\n') && (*src != 0x7C) && (*src != '\r'))
-				{
-					*dst++ = *src;
-				}
-				src++;
-			}
-			*dst = '\0'; // Null-terminate the result string
-		
-			return newStr;
 		}
 
 		static void StripNewLinesAndPipesToBuffer(const char* in, char* out, size_t outSize)
