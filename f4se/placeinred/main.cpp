@@ -1,5 +1,7 @@
 #include "main.h"
 
+static PlaceInRed placeinred;
+UInt32 pluginVersion = 14;
 
 static SimpleFinder FirstConsole;
 static SimpleFinder FirstObScript;
@@ -14,184 +16,207 @@ static SimpleFinder Rotate;
 static SimpleFinder SetMotionType;
 static SimpleFinder GetConsoleArg;
 
-static PlaceInRed placeinred;
-UInt32 pluginVersion = 14;
 
 
-namespace pir {
 
-	// Wrapper to handle asynchronous Utility::pattern
-	template <typename T, size_t N>
-	std::future<void> FindPatternAsync(T& ptr_address, const char(&pattern)[N])
-	{
-		return std::async(std::launch::async, [&ptr_address, &pattern] {
-			ptr_address = Utility::pattern(pattern).count(1).get(0).get<uintptr_t>();
-			});
-	}
+// Construct Utility::pattern synchronously so the async task captures an owned copy
+// and avoids undefined behavior from dangling pattern storage.
+// Asynchronously find a single pattern match.
+// If the pattern is not found or the scan faults, ptr_address is set to 0.
+template <typename T, size_t N>
+std::future<void> FindPatternAsync(T& ptr_address, const char(&pattern)[N])
+{
+	Utility::pattern pat(pattern); // owned copy, lifetime-safe
 
-	// return the ini path as a std string
-	static const std::string& GetPluginINIPath()
-	{
-		static std::string s_configPath;
-
-		if (s_configPath.empty())
+	return std::async(std::launch::async,
+		[&ptr_address, pat]() mutable
 		{
-			std::string	runtimePath = GetRuntimeDirectory();
-			if (!runtimePath.empty())
-			{
-				s_configPath = runtimePath + placeinred.pluginINI;
-			}
-		}
-		return s_configPath;
-	}
+			// Default: not found
+			ptr_address = 0;
 
+			// The scan itself can fault (end-of-code reads, SSE loads),
+			// so guard only the scan step.
+			__try
+			{
+				pat.count(1);
+			}
+			__except (EXCEPTION_EXECUTE_HANDLER)
+			{
+				return;
+			}
+
+			// Safe: returns nullptr if no matches
+			auto match = pat.get(0).get<uintptr_t>();
+			if (match)
+				ptr_address = (T)match;
+		}
+	);
 }
 
-	// get a plugin ini setting as a string value
-	static std::string GetPluginINISettingAsString(const char* section, const char* key, const char* defaultValue = "")
-	{
-		const std::string& iniPath = pir::GetPluginINIPath();
-		if (iniPath.empty()) return defaultValue;
+// return the ini path as a std string
+static const std::string& GetPluginINIPath()
+{
+	static std::string s_configPath;
 
-		char buffer[256] = {};
-		GetPrivateProfileString(section, key, defaultValue, buffer, sizeof(buffer), iniPath.c_str());
-		return buffer;
+	if (s_configPath.empty())
+	{
+		std::string	runtimePath = GetRuntimeDirectory();
+		if (!runtimePath.empty())
+		{
+			s_configPath = runtimePath + placeinred.pluginINI;
+		}
 	}
+	return s_configPath;
+}
 
-	// convert ini string to bool
-	static bool GetBoolFromINIString(const std::string& s, bool defaultValue = false)
-	{
-		std::string lower;
-		lower.reserve(s.size());
-		for (unsigned char c : s)
-			lower += static_cast<char>(std::tolower(c));
+// get a plugin ini setting as a string value
+static std::string GetPluginINISettingAsString(const char* section, const char* key, const char* defaultValue = "")
+{
+	const std::string& iniPath = GetPluginINIPath();
+	if (iniPath.empty()) return defaultValue;
 
-		// Trim whitespace
-		const auto start = lower.find_first_not_of(" \t\r\n");
-		if (start == std::string::npos)
-			return defaultValue;
+	char buffer[256] = {};
+	GetPrivateProfileString(section, key, defaultValue, buffer, sizeof(buffer), iniPath.c_str());
+	return buffer;
+}
 
-		const auto end = lower.find_last_not_of(" \t\r\n");
-		const std::string trimmed = lower.substr(start, end - start + 1);
+// convert ini string to bool
+static bool GetBoolFromINIString(const std::string& s, bool defaultValue = false)
+{
+	std::string lower;
+	lower.reserve(s.size());
+	for (unsigned char c : s)
+		lower += static_cast<char>(std::tolower(c));
 
-		if (trimmed == "1" || trimmed == "true" || trimmed == "yes" || trimmed == "on")
-			return true;
-		if (trimmed == "0" || trimmed == "false" || trimmed == "no" || trimmed == "off")
-			return false;
-
+	// Trim whitespace
+	const auto start = lower.find_first_not_of(" \t\r\n");
+	if (start == std::string::npos)
 		return defaultValue;
 
+	const auto end = lower.find_last_not_of(" \t\r\n");
+	const std::string trimmed = lower.substr(start, end - start + 1);
+
+	if (trimmed == "1" || trimmed == "true" || trimmed == "yes" || trimmed == "on")
+		return true;
+	if (trimmed == "0" || trimmed == "false" || trimmed == "no" || trimmed == "off")
+		return false;
+
+	return defaultValue;
+}
+
+// string to float
+static Float32 FloatFromString(std::string fString, Float32 min = 0.001, Float32 max = 999.999, Float32 error = 0)
+{
+	Float32 theFloat = 0;
+	try
+	{
+		theFloat = std::stof(fString);
+	}
+	catch (...)
+	{
+		return error;
+	}
+	if (theFloat > min && theFloat < max) {
+		return theFloat;
+	}
+	else {
+		return error;
+	}
+}
+
+static void StripNewLinesAndPipesToBuffer(const char* in, char* out, size_t outSize)
+{
+	if (!out || outSize == 0) return;
+	out[0] = '\0';
+	if (!in) return;
+
+	size_t j = 0;
+	for (size_t i = 0; in[i] && j + 1 < outSize; ++i)
+	{
+		const char c = in[i];
+		if (c != '\n' && c != '\r' && c != '|')
+			out[j++] = c;
+	}
+	out[j] = '\0';
+}
 
 
+
+// Simple function to read memory (safe version)
+static bool ReadMemory(uintptr_t addr, void* data, size_t len)
+{
+	if (!addr || !data || len == 0)
+		return false;
+
+	__try
+	{
+		memcpy(data, reinterpret_cast<const void*>(addr), len);
+		return true;
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER)
+	{
+		return false;
+	}
+}
+
+// return rel32 from a pattern match
+// pattern: pointer to pattern match
+// start: bytes to reach rel32 from pattern
+// end: bytes to reach the end
+// shift: shift the final address by this many bytes
+//static SInt32 GetRel32FromPattern(uintptr_t* pattern, UInt64 start, UInt64 end, UInt64 shift = 0x0)
+//{
+//
+//	if (pattern) {
+//		SInt32 relish32 = 0;
+//		if (!ReadMemory(uintptr_t(pattern) + start, &relish32, sizeof(SInt32))) {
+//			return 0;
+//		}
+//		else {
+//			relish32 = (((uintptr_t(pattern) + end) + relish32) - placeinred.FO4BaseAddr) + (shift);
+//			return relish32;
+//		}
+//	}
+//	return 0;
+//}
+
+static SInt32 GetRel32FromPattern(uintptr_t instr, UInt64 start, UInt64 end, UInt64 shift = 0)
+{
+	SInt32 rel = 0;
+	if (!ReadMemory(instr + start, &rel, sizeof(rel)))
+		return 0;
+
+	return (SInt32)(((instr + end) + rel - placeinred.FO4BaseAddr) + shift);
+}
+
+// read the address at an address+offset
+static uintptr_t GetSinglePointer(uintptr_t address, UInt32 offset)
+{
+	uintptr_t result = 0;
+	if (ReadMemory(address + offset, &result, sizeof(uintptr_t))) {
+		return result;
+	}
+	else {
+		return 0;
+	}
+}
+
+static uintptr_t GimmeMultiPointer(uintptr_t baseAddress, UInt32* offsets, UInt32 numOffsets)
+{
+	if (!baseAddress)
+		return 0;
+
+	uintptr_t address = baseAddress;
+
+	for (UInt32 i = 0; i < numOffsets; i++) {
+		if (!ReadMemory(address + offsets[i], &address, sizeof(address)))
+			return 0;
+	}
+	return address;
 }
 
 extern "C" {
 	namespace pir {
-
-		// string to float
-		static Float32 FloatFromString(std::string fString, Float32 min = 0.001, Float32 max = 999.999, Float32 error = 0)
-		{
-			Float32 theFloat = 0;
-			try
-			{
-				theFloat = std::stof(fString);
-			}
-			catch (...)
-			{
-				return error;
-			}
-			if (theFloat > min && theFloat < max) {
-				return theFloat;
-			}
-			else {
-				return error;
-			}
-		}
-
-		static void StripNewLinesAndPipesToBuffer(const char* in, char* out, size_t outSize)
-		{
-			if (!out || outSize == 0) return;
-			out[0] = '\0';
-			if (!in) return;
-
-			size_t j = 0;
-			for (size_t i = 0; in[i] && j + 1 < outSize; ++i)
-			{
-				const char c = in[i];
-				if (c != '\n' && c != '\r' && c != '|')
-					out[j++] = c;
-			}
-			out[j] = '\0';
-		}
-
-		// Simple function to read memory (credit reg2k).
-		static bool ReadMemory(uintptr_t addr, void* data, size_t len)
-		{
-			UInt32 oldProtect;
-			// Change memory protection to allow read/write/execute access
-			if (VirtualProtect((void*)addr, len, PAGE_EXECUTE_READWRITE, &oldProtect)) {
-				// Copy memory to buffer
-				memcpy(data, (void*)addr, len);
-
-				// Restore the original memory protection
-				if (VirtualProtect((void*)addr, len, oldProtect, &oldProtect)) {
-					return true;
-				}
-			}
-			return false;
-		}
-
-		// return rel32 from a pattern match
-		// pattern: pointer to pattern match
-		// start: bytes to reach rel32 from pattern
-		// end: bytes to reach the end
-		// shift: shift the final address by this many bytes
-		static SInt32 GetRel32FromPattern(uintptr_t* pattern, UInt64 start, UInt64 end, UInt64 shift = 0x0)
-		{
-
-			if (pattern) {
-				SInt32 relish32 = 0;
-				if (!ReadMemory(uintptr_t(pattern) + start, &relish32, sizeof(SInt32))) {
-					return 0;
-				}
-				else {
-					relish32 = (((uintptr_t(pattern) + end) + relish32) - placeinred.FO4BaseAddr) + (shift);
-					return relish32;
-				}
-			}
-			return 0;
-		}
-
-		// read the address at an address+offset
-		static uintptr_t GetSinglePointer(uintptr_t address, UInt32 offset)
-		{
-			uintptr_t result = 0;
-			if (ReadMemory(address + offset, &result, sizeof(uintptr_t))) {
-				return result;
-			}
-			else {
-				return 0;
-			}
-		}
-
-		// Returns a pointer to the address obtained from a base+offsets
-		// allows you to call with multiple offsets for multi-level pointers
-		static uintptr_t* GimmeMultiPointer(uintptr_t baseAddress, UInt32* offsets, UInt32 numOffsets)
-		{
-			if (!baseAddress || baseAddress == 0) {
-				return nullptr;
-			}
-			uintptr_t address = baseAddress;
-
-			for (UInt32 i = 0; i < numOffsets; i++) {
-				address = GetSinglePointer(address, offsets[i]);
-				if (!address || address == 0) {
-					return nullptr;
-				}
-			}
-			return reinterpret_cast<uintptr_t*>(address);
-		}
-
 		// Determine if player is in workshop mode
 		static bool IsPlayerInWorkshopMode()
 		{
@@ -232,8 +257,10 @@ extern "C" {
 		{
 			if (CurrentWSRef.ptr && CurrentWSRef.addr && pir::IsPlayerInWorkshopMode()) {
 
-				uintptr_t* refptr = GimmeMultiPointer(CurrentWSRef.addr, placeinred.CurrentWSRef_Offsets, placeinred.CurrentWSRef_OffsetsSize);
-				TESObjectREFR* ref = (TESObjectREFR*)(refptr);
+				//uintptr_t* refptr = GimmeMultiPointer(CurrentWSRef.addr, placeinred.CurrentWSRef_Offsets, placeinred.CurrentWSRef_OffsetsSize);
+				//TESObjectREFR* ref = (TESObjectREFR*)(refptr);
+				uintptr_t refaddr = GimmeMultiPointer(CurrentWSRef.addr, placeinred.CurrentWSRef_Offsets, placeinred.CurrentWSRef_OffsetsSize);
+				TESObjectREFR* ref = (TESObjectREFR*)refaddr;
 
 				if (ref)
 				{
@@ -585,7 +612,6 @@ extern "C" {
 				&rot
 			);
 		}
-
 
 		// Single-axis helpers for readability and console bindings
 		static inline void RotateRefByDegreesZ(float deg)
@@ -1344,48 +1370,47 @@ extern "C" {
 		{
 			// launch async pattern searches
 			pirlog("Multithreaded search for memory patterns.");
-			std::vector<std::future<void>> vecFutures;
+			std::vector<std::future<void>> vec_futures;
 
-			
-			vecFutures.emplace_back(FindPatternAsync(placeinred.achievements, "48 83 EC 28 C6 44 24 ? 00 84 D2 74 1C 48"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.cnref_original_call_pattern, "FF 90 D0 01 00 00 48 89 74 24 40 4C 8D 05 ? ? ? ? 4C"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.cnref_GetRefName_pattern, "E8 ? ? ? ? 4C 8B 05 ? ? ? ? 48 8D 4C 24 40 4C 8B C8 BA 00 01 00 00 E8 ? ? ? ? 83"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.A, "C6 05 ? ? ? ? 01 84 C0 75 A9 B1 02"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.B, "B2 01 88 15 ? ? ? ? EB 04 84 D2 74 07"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.C, "0F B6 05 ? ? ? ? 44 0F B6 A5 ? ? ? ? 84 C0 75"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.D, "0F B6 05 ? ? ? ? 3A 05 ? ? ? ? 48 8B B4 24 ? ? ? ? C6 05"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.E, "76 0C C6 05 ? ? ? ? 06 E9 ? ? ? ? 40 84 ED 0F 84"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.F, "88 05 ? ? ? ? E8 ? ? ? ? 84 C0 75 ? 80 3D ? ? ? ? 02"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.G, "0F 95 05 ? ? ? ? E8 ? ? ? ? 40 38 35 ? ? ? ? 48"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.H, "74 11 40 84 F6 74 0C 48 8D ? ? 49 8B ? E8"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.J, "74 35 48 8B B5 ? ? ? ? 48 8B CE E8 ? ? ? ? 84 C0 75"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.CORRECT, "C6 05 ? ? ? ? 01 40 84 F6 74 09 80 3D ? ? ? ? 00 75 ? 80 3D"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.gsnap, "0F 86 ? ? ? ? 41 8B 4E 34 49 B8"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.osnap, "F3 0F 10 35 ? ? ? ? 0F 28 C6 48 ? ? ? ? ? ? 33 C0"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.outlines, "C6 05 ? ? ? ? 01 88 15 ? ? ? ? 76 13 48 8B 05"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.R, "89 05 ? ? ? ? C6 05 ? ? ? ? 01 48 83 C4 68 C3"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.wstimer, "0F 85 AB 00 00 00 F3 0F 10 05 ? ? ? ? 41 0F 2E"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.Y, "8B 58 14 48 8D 4C 24 30 8B D3 45 33 C0 E8"));
-			vecFutures.emplace_back(FindPatternAsync(FirstConsole.ptr, "48 8D 1D ? ? ? ? 48 8D 35 ? ? ? ? 66 90 48 8B 53 F8"));
-			vecFutures.emplace_back(FindPatternAsync(FirstObScript.ptr, "48 8D 1D ? ? ? ? 4C 8D 35 ? ? ? ? 0F 1F 40 00 0F 1F 84 00 00 00 00 00"));
-			vecFutures.emplace_back(FindPatternAsync(GetConsoleArg.ptr, "4C 89 4C 24 20 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.GetScale_pattern, "66 89 BB 08 01 00 00 E8 ? ? ? ? 48 8B 0D ? ? ? ? 0F 28 F0 48"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.SetScale_pattern, "E8 ? ? ? ? 40 84 F6 75 07 81 63 10 FF FF DF FF 33 ED"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.PlaySound_File_pattern, "48 8B C4 48 89 58 08 57 48 81 EC 50 01 00 00 8B FA C7 40 18 FF FF FF FF 48"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.PlaySound_UI_pattern, "48 89 5C 24 08 57 48 83 EC 50 48 8B D9 E8 ? ? ? ? 48 85 C0 74 6A"));
-			vecFutures.emplace_back(FindPatternAsync(SetMotionType.ptr, "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 83 EC 50 45 32 E4 41 8D 41 FF"));
-			vecFutures.emplace_back(FindPatternAsync(WSMode.ptr, "80 3D ? ? ? ? 00 74 0E C6 07 02 48 8B 5C 24 30 48 83 C4 20 5F C3"));
-			vecFutures.emplace_back(FindPatternAsync(WSSize.ptr, "01 05 ? ? ? ? 8B 44 24 58 01 05 ? ? ? ? 85 D2 0F 84"));
-			vecFutures.emplace_back(FindPatternAsync(gConsole.ptr, "48 8D 05 ? ? ? ? 48 89 2D ? ? ? ? 48 89 05 ? ? ? ? 89 2D ? ? ? ? 40 88 2D ? ? ? ? 48"));
-			vecFutures.emplace_back(FindPatternAsync(gDataHandler.ptr, "48 83 3D ? ? ? ? 00 4D 8B F1 41 0F B6 F0 48 8B FA 48 8B D9 0F 84 ? ? ? ? 80 3D ? ? ? ? 00 48"));
-			vecFutures.emplace_back(FindPatternAsync(WorkbenchSelection.ptr, "0F B6 84 02 ? ? ? ? 8B 8C 82 ? ? ? ? 48 03 CA FF E1 B0 01 48 83 C4 20 5B C3"));
-			vecFutures.emplace_back(FindPatternAsync(CurrentWSRef.ptr, "48 8B 1D ? ? ? ? 4C 8D 24 C3 49 3B DC 0F 84 ? ? ? ? 66"));
-			vecFutures.emplace_back(FindPatternAsync(Zoom.ptr, "F3 0F 10 0D ? ? ? ? 0F 29 74 24 20 F3 0F 10 35"));
-			vecFutures.emplace_back(FindPatternAsync(Rotate.ptr, "F3 0F 10 05 ? ? ? ? ? ? ? ? ? ? ? ? 84 C9 75 07 0F 57 05"));
-			vecFutures.emplace_back(FindPatternAsync(placeinred.RC, "E8 ? ? ? ? 83 3D ? ? ? ? 00 0F 87 ? ? ? ? 48 8B 03 48 8B CB FF 90 ? ? ? ? 48"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.R, "89 05 ? ? ? ? C6 05 ? ? ? ? 01 48 83 C4 68 C3"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.RC, "E8 ? ? ? ? 83 3D ? ? ? ? 00 0F 87 ? ? ? ? 48 8B 03 48 8B CB FF 90 ? ? ? ? 48"));
+			vec_futures.emplace_back(FindPatternAsync(Zoom.ptr, "F3 0F 10 0D ? ? ? ? 0F 29 74 24 20 F3 0F 10 35"));
+			vec_futures.emplace_back(FindPatternAsync(Rotate.ptr, "F3 0F 10 05 ? ? ? ? ? ? ? ? ? ? ? ? 84 C9 75 07 0F 57 05"));
+			vec_futures.emplace_back(FindPatternAsync(CurrentWSRef.ptr, "48 8B 1D ? ? ? ? 4C 8D 24 C3 49 3B DC 0F 84 ? ? ? ? 66"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.achievements, "48 83 EC 28 C6 44 24 ? 00 84 D2 74 1C 48"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.cnref_original_call_pattern, "FF 90 D0 01 00 00 48 89 74 24 40 4C 8D 05 ? ? ? ? 4C"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.cnref_GetRefName_pattern, "E8 ? ? ? ? 4C 8B 05 ? ? ? ? 48 8D 4C 24 40 4C 8B C8 BA 00 01 00 00 E8 ? ? ? ? 83"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.A, "C6 05 ? ? ? ? 01 84 C0 75 A9 B1 02"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.B, "B2 01 88 15 ? ? ? ? EB 04 84 D2 74 07"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.C, "0F B6 05 ? ? ? ? 44 0F B6 A5 ? ? ? ? 84 C0 75"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.D, "0F B6 05 ? ? ? ? 3A 05 ? ? ? ? 48 8B B4 24 ? ? ? ? C6 05"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.E, "76 0C C6 05 ? ? ? ? 06 E9 ? ? ? ? 40 84 ED 0F 84"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.F, "88 05 ? ? ? ? E8 ? ? ? ? 84 C0 75 ? 80 3D ? ? ? ? 02"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.G, "0F 95 05 ? ? ? ? E8 ? ? ? ? 40 38 35 ? ? ? ? 48"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.H, "74 11 40 84 F6 74 0C 48 8D ? ? 49 8B ? E8"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.J, "74 35 48 8B B5 ? ? ? ? 48 8B CE E8 ? ? ? ? 84 C0 75"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.CORRECT, "C6 05 ? ? ? ? 01 40 84 F6 74 09 80 3D ? ? ? ? 00 75 ? 80 3D"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.gsnap, "0F 86 ? ? ? ? 41 8B 4E 34 49 B8"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.osnap, "F3 0F 10 35 ? ? ? ? 0F 28 C6 48 ? ? ? ? ? ? 33 C0"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.outlines, "C6 05 ? ? ? ? 01 88 15 ? ? ? ? 76 13 48 8B 05"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.wstimer, "0F 85 AB 00 00 00 F3 0F 10 05 ? ? ? ? 41 0F 2E"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.Y, "8B 58 14 48 8D 4C 24 30 8B D3 45 33 C0 E8"));
+			vec_futures.emplace_back(FindPatternAsync(FirstConsole.ptr, "48 8D 1D ? ? ? ? 48 8D 35 ? ? ? ? 66 90 48 8B 53 F8"));
+			vec_futures.emplace_back(FindPatternAsync(FirstObScript.ptr, "48 8D 1D ? ? ? ? 4C 8D 35 ? ? ? ? 0F 1F 40 00 0F 1F 84 00 00 00 00 00"));
+			vec_futures.emplace_back(FindPatternAsync(GetConsoleArg.ptr, "4C 89 4C 24 20 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.GetScale_pattern, "66 89 BB 08 01 00 00 E8 ? ? ? ? 48 8B 0D ? ? ? ? 0F 28 F0 48"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.SetScale_pattern, "E8 ? ? ? ? 40 84 F6 75 07 81 63 10 FF FF DF FF 33 ED"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.PlaySound_File_pattern, "48 8B C4 48 89 58 08 57 48 81 EC 50 01 00 00 8B FA C7 40 18 FF FF FF FF 48"));
+			vec_futures.emplace_back(FindPatternAsync(placeinred.PlaySound_UI_pattern, "48 89 5C 24 08 57 48 83 EC 50 48 8B D9 E8 ? ? ? ? 48 85 C0 74 6A"));
+			vec_futures.emplace_back(FindPatternAsync(SetMotionType.ptr, "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 83 EC 50 45 32 E4 41 8D 41 FF"));
+			vec_futures.emplace_back(FindPatternAsync(WSMode.ptr, "80 3D ? ? ? ? 00 74 0E C6 07 02 48 8B 5C 24 30 48 83 C4 20 5F C3"));
+			vec_futures.emplace_back(FindPatternAsync(WSSize.ptr, "01 05 ? ? ? ? 8B 44 24 58 01 05 ? ? ? ? 85 D2 0F 84"));
+			vec_futures.emplace_back(FindPatternAsync(gConsole.ptr, "48 8D 05 ? ? ? ? 48 89 2D ? ? ? ? 48 89 05 ? ? ? ? 89 2D ? ? ? ? 40 88 2D ? ? ? ? 48"));
+			vec_futures.emplace_back(FindPatternAsync(gDataHandler.ptr, "48 83 3D ? ? ? ? 00 4D 8B F1 41 0F B6 F0 48 8B FA 48 8B D9 0F 84 ? ? ? ? 80 3D ? ? ? ? 00 48"));
+			vec_futures.emplace_back(FindPatternAsync(WorkbenchSelection.ptr, "0F B6 84 02 ? ? ? ? 8B 8C 82 ? ? ? ? 48 03 CA FF E1 B0 01 48 83 C4 20 5B C3"));
 
 			// Wait for all async tasks to complete
-			for (auto& future : vecFutures) {
+			for (auto& future : vec_futures) {
 				future.get();
 			}
 
@@ -1400,14 +1425,14 @@ extern "C" {
 			if (WSSize.ptr) {
 				ReadMemory((uintptr_t(WSSize.ptr) + 0x00), &placeinred.DRAWS_OLD, 0x06); //draws
 				ReadMemory((uintptr_t(WSSize.ptr) + 0x0A), &placeinred.TRIS_OLD, 0x06); //triangles
-				WSSize.r32 = GetRel32FromPattern(WSSize.ptr, 0x02, 0x06, 0x00); // rel32 of draws
+				WSSize.r32 = GetRel32FromPattern((uintptr_t)WSSize.ptr, 0x02, 0x06, 0x00); // rel32 of draws
 				WSSize.addr = placeinred.FO4BaseAddr + (uintptr_t)WSSize.r32;
 			}
 
 			//zoom and rotate
 			if (Zoom.ptr && Rotate.ptr) {
-				Zoom.r32 = GetRel32FromPattern(Zoom.ptr, 0x04, 0x08, 0x00);
-				Rotate.r32 = GetRel32FromPattern(Rotate.ptr, 0x04, 0x08, 0x00);
+				Zoom.r32 = GetRel32FromPattern((uintptr_t)Zoom.ptr, 0x04, 0x08, 0x00);
+				Rotate.r32 = GetRel32FromPattern((uintptr_t)Rotate.ptr, 0x04, 0x08, 0x00);
 				Zoom.addr = placeinred.FO4BaseAddr + (uintptr_t)Zoom.r32;
 				Rotate.addr = placeinred.FO4BaseAddr + (uintptr_t)Rotate.r32;
 				ReadMemory(Rotate.addr, &placeinred.fOriginalROTATE, sizeof(Float32));
@@ -1416,13 +1441,13 @@ extern "C" {
 
 			//consolenameref
 			if (placeinred.cnref_original_call_pattern && placeinred.cnref_GetRefName_pattern) {
-				placeinred.cnref_GetRefName_r32 = GetRel32FromPattern(placeinred.cnref_GetRefName_pattern, 0x01, 0x05, 0x00); //the good function
+				placeinred.cnref_GetRefName_r32 = GetRel32FromPattern((uintptr_t)placeinred.cnref_GetRefName_pattern, 0x01, 0x05, 0x00); //the good function
 				placeinred.cnref_GetRefName_addr = placeinred.FO4BaseAddr + (uintptr_t)placeinred.cnref_GetRefName_r32; // good function full address
 			}
 
 			//wsmode
 			if (WSMode.ptr) {
-				WSMode.r32 = GetRel32FromPattern(WSMode.ptr, 0x02, 0x07, 0x00);
+				WSMode.r32 = GetRel32FromPattern((uintptr_t)WSMode.ptr, 0x02, 0x07, 0x00);
 				WSMode.addr = placeinred.FO4BaseAddr + WSMode.r32;
 			}
 
@@ -1436,33 +1461,33 @@ extern "C" {
 
 			//setscale
 			if (placeinred.SetScale_pattern) {
-				placeinred.SetScale_s32 = GetRel32FromPattern(placeinred.SetScale_pattern, 0x01, 0x05, 0x00);
+				placeinred.SetScale_s32 = GetRel32FromPattern((uintptr_t)placeinred.SetScale_pattern, 0x01, 0x05, 0x00);
 				RelocAddr <_SetScale_Native> GimmeSetScale(placeinred.SetScale_s32);
 				placeinred.SetScale_func = GimmeSetScale;
 			}
 
 			//getscale
 			if (placeinred.GetScale_pattern) {
-				placeinred.GetScale_r32 = GetRel32FromPattern(placeinred.GetScale_pattern, 0x08, 0x0C, 0x00);
+				placeinred.GetScale_r32 = GetRel32FromPattern((uintptr_t)placeinred.GetScale_pattern, 0x08, 0x0C, 0x00);
 				RelocAddr <_GetScale_Native> GimmeGetScale(placeinred.GetScale_r32);
 				placeinred.GetScale_func = GimmeGetScale;
 			}
 
 			//g_console
 			if (gConsole.ptr) {
-				gConsole.r32 = GetRel32FromPattern(gConsole.ptr, 0x03, 0x07, 0x00);
+				gConsole.r32 = GetRel32FromPattern((uintptr_t)gConsole.ptr, 0x03, 0x07, 0x00);
 				gConsole.addr = placeinred.FO4BaseAddr + (uintptr_t)gConsole.r32;
 			}
 
 			//g_datahandler
 			if (gDataHandler.ptr) {
-				gDataHandler.r32 = GetRel32FromPattern(gDataHandler.ptr, 0x03, 0x08, 0x00);
+				gDataHandler.r32 = GetRel32FromPattern((uintptr_t)gDataHandler.ptr, 0x03, 0x08, 0x00);
 				gDataHandler.addr = placeinred.FO4BaseAddr + (uintptr_t)gDataHandler.r32;
 			}
 
 			//CurrentWSRef
 			if (CurrentWSRef.ptr) {
-				CurrentWSRef.r32 = GetRel32FromPattern(CurrentWSRef.ptr, 0x03, 0x07, 0x00);
+				CurrentWSRef.r32 = GetRel32FromPattern((uintptr_t)CurrentWSRef.ptr, 0x03, 0x07, 0x00);
 				CurrentWSRef.addr = placeinred.FO4BaseAddr + (uintptr_t)CurrentWSRef.r32;
 			}
 
@@ -1475,14 +1500,14 @@ extern "C" {
 
 			//first console
 			if (FirstConsole.ptr) {
-				FirstConsole.r32 = GetRel32FromPattern(FirstConsole.ptr, 0x03, 0x07, -0x08);
+				FirstConsole.r32 = GetRel32FromPattern((uintptr_t)FirstConsole.ptr, 0x03, 0x07, -0x08);
 				RelocPtr <ObScriptCommand> _FirstConsole(FirstConsole.r32);
 				FirstConsole.cmd = _FirstConsole;
 			}
 
 			//first obscript
 			if (FirstObScript.ptr) {
-				FirstObScript.r32 = GetRel32FromPattern(FirstObScript.ptr, 0x03, 0x07, -0x08);
+				FirstObScript.r32 = GetRel32FromPattern((uintptr_t)FirstObScript.ptr, 0x03, 0x07, -0x08);
 				RelocPtr <ObScriptCommand> _FirstObScript(FirstObScript.r32);
 				FirstObScript.cmd = _FirstObScript;
 			}

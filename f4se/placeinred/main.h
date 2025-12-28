@@ -71,12 +71,13 @@ public:
 		"  pir z<N>              Rotate +N degrees (Z axis)\n"
 		"  pir z-<N>             Rotate -N degrees (Z axis)\n"
 		"    N = 0.1, 0.5, 1, 2, 5, 10, 15, 30, 45\n"
-		"Locking:\n"
+		"Lock object in place:\n"
 		"  pir lock              Lock object (disable physics)\n"
 		"  pir lockq             Lock object (no sound fx)\n"
-		"  pir unlock            Unlock object (motiontype dynamic)\n"
-		"Workshop:\n"
+		"  pir unlock            Unlock object (enable physics)\n"
+		"Misc:\n"
 		"  pir wb                Toggle allow moving workbench\n"
+		"  pir cnref             Show ref name in console when clicked\n"
 	};
 
 	// track plugin performance
