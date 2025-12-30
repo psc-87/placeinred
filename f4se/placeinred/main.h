@@ -24,12 +24,16 @@ static thread_local const char* g_pir_func = nullptr;
     } while (0)
 
 // typedefs
-typedef bool  (*_GetConsoleArg_Native) (void* paramInfo, void* scriptData, void* opcodeOffsetPtr, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, ...);
+typedef bool  (*_ParseConsoleArg_Native) (void* paramInfo, void* scriptData, void* opcodeOffsetPtr, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, ...);
 typedef void  (*_SetMotionType_Native) (VirtualMachine* vm, uint32_t stackID, TESObjectREFR* objectReference, int motionType, bool allowActivate);
 typedef void  (*_PlayUISound_Native)   (const char*);
 typedef void  (*_PlayFileSound_Native) (const char*);
 typedef float (*_GetScale_Native)      (TESObjectREFR* objRef);
 typedef void  (*_SetScale_Native)      (TESObjectREFR* objRef, float scale);
+
+// unique function pointers
+_SetMotionType_Native SetMotionType_native = nullptr;
+_ParseConsoleArg_Native ParseConsoleArg_native = nullptr;
 
 // Struct to store a pointer, rel32, and final address, and optionally an ObScriptCommand pointers
 // needed a lot of these so made a struct
@@ -110,9 +114,9 @@ public:
 	Float32 fOriginalROTATE = 5.0000F; //updated later to fItemRotationSpeed:Workshop
 	Float32 fSlowerZOOM = 1.0000F;     //updated later to plugin ini value
 	Float32 fSlowerROTATE = 0.5000F;   //updated later to plugin ini value
-	Float32 fRotateDegreesCustomX = 7.2000F;   //updated later to plugin ini value
-	Float32 fRotateDegreesCustomY = 7.2000F;   //updated later to plugin ini value
-	Float32 fRotateDegreesCustomZ = 7.2000F;   //updated later to plugin ini value
+	Float32 fRotateDegreesCustomX = 3.6000F;   //updated later to plugin ini value
+	Float32 fRotateDegreesCustomY = 3.6000F;   //updated later to plugin ini value
+	Float32 fRotateDegreesCustomZ = 3.6000F;   //updated later to plugin ini value
 
 	// pointers
 	uintptr_t* A = nullptr;
@@ -193,9 +197,7 @@ public:
 	uintptr_t  cnref_GetRefName_addr = 0; // the good function full address
 	SInt32     cnref_GetRefName_r32 = 0; // rel32 of the good function
 
-	// unique function pointers
-	_SetMotionType_Native SetMotionType_Native = nullptr;
-	_GetConsoleArg_Native GetConsoleArg_Native = nullptr;
+
 
 	// store base address
 	uintptr_t FO4BaseAddr = 0;
