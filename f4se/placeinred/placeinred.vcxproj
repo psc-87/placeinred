@@ -75,7 +75,6 @@
     <ClCompile Include="pattern.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="f4se.h" />
     <ClInclude Include="main.h" />
     <ClInclude Include="pattern.h" />
   </ItemGroup>

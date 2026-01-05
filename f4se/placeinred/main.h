@@ -3,25 +3,36 @@
 
 #include "shlobj.h"
 #include "pattern.h"
-#include "f4se.h"
 #include <cmath>
 #include <vector>
-#include <future> // For std::async and std::future
+#include <future>
 #include <array>
+
+#include "f4se_common/BranchTrampoline.h"
+#include "f4se_common/f4se_version.h"
+#include "f4se_common/Relocation.h"
+#include "f4se_common/SafeWrite.h"
+#include "f4se_common/Utilities.h"
+
+#include "f4se/GameExtraData.h"
+#include "f4se/GameReferences.h"
+#include "f4se/ObScript.h"
+#include "f4se/PapyrusVM.h"
+#include "f4se/PluginAPI.h"
 
 
 // log wrapper with function name
 static thread_local const char* g_pir_func = nullptr;
-#define pirlog(fmt, ...)                                      \
-    do {                                                      \
-        const char* _func = g_pir_func ? g_pir_func : __func__; \
-        char _pirbuf[2048];                                   \
-        _snprintf_s(                                          \
-            _pirbuf, sizeof(_pirbuf), _TRUNCATE,              \
-            "[%s] " fmt, _func, ##__VA_ARGS__                \
-        );                                                     \
-        placeinred.log.FormattedMessage(_pirbuf);             \
-    } while (0)
+#define pirlog(fmt, ...)\
+do {\
+    const char* _func = g_pir_func ? g_pir_func : __func__;\
+    char _pirbuf[2048];\
+    _snprintf_s(\
+        _pirbuf, sizeof(_pirbuf), _TRUNCATE,\
+        "[%s] " fmt, _func, ##__VA_ARGS__\
+    );\
+    pir.debuglog.FormattedMessage(_pirbuf);\
+} while (0)
 
 // typedefs
 typedef bool  (*_ParseConsoleArg_Native) (void* paramInfo, void* scriptData, void* opcodeOffsetPtr, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, ...);
@@ -30,6 +41,7 @@ typedef void  (*_PlayUISound_Native)   (const char*);
 typedef void  (*_PlayFileSound_Native) (const char*);
 typedef float (*_GetScale_Native)      (TESObjectREFR* objRef);
 typedef void  (*_SetScale_Native)      (TESObjectREFR* objRef, float scale);
+
 
 // unique function pointers
 _SetMotionType_Native SetMotionType_native = nullptr;
@@ -49,51 +61,16 @@ class PlaceInRed {
 
 public:
 
-	// help message
-	const char* ConsoleHelpMSG =
-	{
-		"PlaceInRed (pir) — Command Reference\n"
-		"-----------------------------------\n"
-		"\n"
-		"Toggles:\n"
-		"  pir toggle            Toggle Place in Red\n"
-		"  pir osnap             Toggle object snapping\n"
-		"  pir gsnap             Toggle ground snapping\n"
-		"  pir slow              Toggle slower rotate/zoom speed\n"
-		"  pir workshopsize      Toggle unlimited workshop build size\n"
-		"  pir outlines          Toggle object outlines\n"
-		"  pir achievements      Toggle achievements with mods\n"
-		"Scaling:\n"
-		"  pir scaleup<N>        Scale up by N percent\n"
-		"  pir scaledown<N>      Scale down by N percent\n"
-		"    N = 1, 2, 5, 10, 25, 50, 75, 100\n"
-		"Rotation (Degrees):\n"
-		"  pir x<N>              Rotate +N degrees (X axis)\n"
-		"  pir x-<N>             Rotate -N degrees (X axis)\n"
-		"  pir y<N>              Rotate +N degrees (Y axis)\n"
-		"  pir y-<N>             Rotate -N degrees (Y axis)\n"
-		"  pir z<N>              Rotate +N degrees (Z axis)\n"
-		"  pir z-<N>             Rotate -N degrees (Z axis)\n"
-		"    N = 0.1, 0.5, 1, 2, 5, 10, 15, 30, 45\n"
-		"Lock object in place:\n"
-		"  pir lock              Lock object (disable physics)\n"
-		"  pir lockq             Lock object (no sound fx)\n"
-		"  pir unlock            Unlock object (enable physics)\n"
-		"Misc:\n"
-		"  pir wb                Toggle allow moving workbench\n"
-		"  pir cnref             Show ref name in console when clicked\n"
-	};
-
 	// track plugin performance
 	UInt64 start_tickcount = GetTickCount64(); // set during initialization
 	UInt64 end_tickcount = 0; // updated when plugin load finishes
 
 	// F4SE interfaces and handles
-	IDebugLog               log;
-	const char*             pluginLogFile =   { "\\My Games\\Fallout4\\F4SE\\PlaceInRed.log" };
-	std::string             pluginINI =       "Data\\F4SE\\Plugins\\PlaceInRed.ini";
-	const char*             locksound =       "UIQuestInactive";
-	PluginHandle            pirPluginHandle = kPluginHandle_Invalid;
+	IDebugLog               debuglog;
+	const char*             plugin_log_file =  {"\\My Games\\Fallout4\\F4SE\\PlaceInRed.log"};
+	std::string             plugin_ini_path =   "Data\\F4SE\\Plugins\\PlaceInRed.ini";
+	const char*             sLockObjectSound =  "UIQuestInactive";
+	PluginHandle            pluginHandle = kPluginHandle_Invalid;
 	F4SEPapyrusInterface*   g_papyrus =       nullptr;
 	F4SEMessagingInterface* g_messaging =     nullptr;
 	F4SEObjectInterface*    g_object =        nullptr;
@@ -101,7 +78,7 @@ public:
 
 	// settings and states
 	bool    bF4SEGameDataIsReady = false; // set to true when F4SE tells us its ready
-	bool    PLACEINRED_ENABLED = false; //pir 1
+	bool    PLACEINRED_ENABLED = false; //pir 1w
 	bool    OBJECTSNAP_ENABLED = true; //pir 2
 	bool    GROUNDSNAP_ENABLED = true; //pir 3
 	bool    SLOW_ENABLED = false; //pir 4
@@ -201,13 +178,49 @@ public:
 
 	// store base address
 	uintptr_t FO4BaseAddr = 0;
-	uintptr_t GetFO4BaseAddress() const{
+	uintptr_t GetFO4BaseAddress() const
+	{
 		return FO4BaseAddr;
 	}
 	PlaceInRed()
 		: FO4BaseAddr(reinterpret_cast<uintptr_t>(GetModuleHandleA(nullptr)))
 	{
 	}
+
+	// help message
+	const char* ConsoleHelpMSG =
+	{
+		"PlaceInRed (pir) — Command Reference\n"
+		"-----------------------------------\n"
+		"\n"
+		"Toggles:\n"
+		"  pir toggle            Toggle Place in Red\n"
+		"  pir osnap             Toggle object snapping\n"
+		"  pir gsnap             Toggle ground snapping\n"
+		"  pir slow              Toggle slower rotate/zoom speed\n"
+		"  pir workshopsize      Toggle unlimited workshop build size\n"
+		"  pir outlines          Toggle object outlines\n"
+		"  pir achievements      Toggle achievements with mods\n"
+		"Scaling:\n"
+		"  pir scaleup<N>        Scale up by N percent\n"
+		"  pir scaledown<N>      Scale down by N percent\n"
+		"    N = 1, 2, 5, 10, 25, 50, 75, 100\n"
+		"Rotation (Degrees):\n"
+		"  pir x<N>              Rotate +N degrees (X axis)\n"
+		"  pir x-<N>             Rotate -N degrees (X axis)\n"
+		"  pir y<N>              Rotate +N degrees (Y axis)\n"
+		"  pir y-<N>             Rotate -N degrees (Y axis)\n"
+		"  pir z<N>              Rotate +N degrees (Z axis)\n"
+		"  pir z-<N>             Rotate -N degrees (Z axis)\n"
+		"    N = 0.1, 0.5, 1, 2, 5, 10, 15, 30, 45\n"
+		"Lock object in place:\n"
+		"  pir lock              Lock object (disable physics)\n"
+		"  pir lockq             Lock object (no sound fx)\n"
+		"  pir unlock            Unlock object (enable physics)\n"
+		"Misc:\n"
+		"  pir wb                Toggle allow moving workbench\n"
+		"  pir cnref             Show ref name in console when clicked\n"
+	};
 
 private:
 	// Wrapper to handle asynchronous Utility::pattern

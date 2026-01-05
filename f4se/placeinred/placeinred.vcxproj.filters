@@ -7,7 +7,6 @@
   <ItemGroup>
     <ClInclude Include="pattern.h" />
     <ClInclude Include="main.h" />
-    <ClInclude Include="f4se.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="exports.def" />
