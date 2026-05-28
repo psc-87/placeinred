@@ -10,10 +10,10 @@
 template <uint64_t FnvPrime, uint64_t OffsetBasis>
 struct basic_fnv_1 {
 
-	uint64_t operator()( std::string const& text ) const {
+	uint64_t operator()(std::string const& text) const {
 
 		uint64_t hash = OffsetBasis;
-		for ( std::string::const_iterator it = text.begin(), end = text.end(); it != end; ++it ) {
+		for (std::string::const_iterator it = text.begin(), end = text.end(); it != end; ++it) {
 
 			hash *= FnvPrime;
 			hash ^= *it;
@@ -30,7 +30,7 @@ typedef basic_fnv_1<fnv_prime, fnv_offset_basis> fnv_1;
 
 namespace Utility {
 
-	void TransformPattern( const std::string & pattern, std::string & data, std::string & mask );
+	void TransformPattern(const std::string& pattern, std::string& data, std::string& mask);
 
 	class executable_meta {
 	private:
@@ -41,7 +41,7 @@ namespace Utility {
 	public:
 
 		executable_meta()
-			: m_begin( 0 ), m_end( 0 ) {
+			: m_begin(0), m_end(0) {
 		}
 
 		void EnsureInit();
@@ -53,30 +53,30 @@ namespace Utility {
 	class pattern_match {
 	private:
 
-		void * m_pointer;
+		void* m_pointer;
 
 	public:
 
-		inline pattern_match( void * pointer ) {
+		inline pattern_match(void* pointer) {
 
 			m_pointer = pointer;
 		}
 
 		template<typename T>
-		T * get( int offset ) {
+		T* get(int offset) {
 
-			if ( m_pointer == nullptr ) {
+			if (m_pointer == nullptr) {
 				return nullptr;
 			}
 
-			char * ptr = reinterpret_cast<char*>( m_pointer );
-			return reinterpret_cast<T*>( ptr + offset );
+			char* ptr = reinterpret_cast<char*>(m_pointer);
+			return reinterpret_cast<T*>(ptr + offset);
 		}
 
 		template<typename T>
-		T * get() {
+		T* get() {
 
-			return get<T>( 0 );
+			return get<T>(0);
 		}
 	};
 
@@ -98,24 +98,24 @@ namespace Utility {
 
 	private:
 
-		void Initialize( const char* pattern, size_t length );
+		void Initialize(const char* pattern, size_t length);
 
-		bool ConsiderMatch( uintptr_t offset );
+		bool ConsiderMatch(uintptr_t offset);
 
-		void EnsureMatches( int maxCount );
+		void EnsureMatches(int maxCount);
 
 	public:
 
 		template<size_t Len>
-		pattern( const char( &pattern )[Len] ) {
+		pattern(const char(&pattern)[Len]) {
 
-			Initialize( pattern, Len );
+			Initialize(pattern, Len);
 		}
 
-		inline pattern & count( int expected ) {
+		inline pattern& count(int expected) {
 
-			if ( !m_matched ) {
-				EnsureMatches( expected );
+			if (!m_matched) {
+				EnsureMatches(expected);
 			}
 
 			return *this;
@@ -123,22 +123,22 @@ namespace Utility {
 
 		inline size_t size() {
 
-			if ( !m_matched ) {
-				EnsureMatches( INT_MAX );
+			if (!m_matched) {
+				EnsureMatches(INT_MAX);
 			}
 
 			return m_matches.size();
 		}
 
-		inline pattern_match & get( int index ) {
+		inline pattern_match& get(int index) {
 
-			if ( !m_matched ) {
-				EnsureMatches( INT_MAX );
+			if (!m_matched) {
+				EnsureMatches(INT_MAX);
 			}
 
-			if ( m_matches.size() == 0 ) {
+			if (m_matches.size() == 0) {
 
-				m_matches.push_back( pattern_match( nullptr ) );
+				m_matches.push_back(pattern_match(nullptr));
 				return m_matches[0];
 			}
 
@@ -147,7 +147,7 @@ namespace Utility {
 
 	public:
 		// define a hint
-		static void hint( uint64_t hash, uintptr_t address );
+		static void hint(uint64_t hash, uintptr_t address);
 	};
 }
 

@@ -55,6 +55,7 @@ std::future<void> FindPatternAsync(T& ptr_address, const char(&pattern)[N])
 	);
 }
 
+
 // return the ini path as a std string
 static const std::string& GetPluginINIPath()
 {
@@ -226,87 +227,87 @@ static bool FoundPatterns()
 	}
 }
 
-//static uintptr_t FindFunctionStart(uintptr_t startAddress, int nTheNumberOfCC = 3, size_t maxScanDistance = 0x10000) {
-//	if (startAddress == 0 || nTheNumberOfCC <= 0) return 0;
-//
-//	uint8_t* currentPtr = reinterpret_cast<uint8_t*>(startAddress);
-//	int consecutiveCC = 0;
-//
-//	// Scan backwards
-//	for (size_t i = 0; i < maxScanDistance; ++i) {
-//		// Decrement pointer first to check the byte before the current instruction
-//		currentPtr--;
-//
-//		// Check if the current byte is an INT 3 (0xCC)
-//		if (*currentPtr == 0xCC) {
-//			consecutiveCC++;
-//		}
-//		else {
-//			// Reset counter if we hit a non-CC byte
-//			consecutiveCC = 0;
-//		}
-//
-//		// If we found our N consecutive CCs
-//		if (consecutiveCC == nTheNumberOfCC) {
-//			// The function start is the address immediately after the CC block
-//			// Result = Address of last CC + 1
-//			return reinterpret_cast<uintptr_t>(currentPtr + nTheNumberOfCC);
-//		}
-//	}
-//
-//	return 0; // Return 0 if the pattern wasn't found within the safety distance
-//}
-//
-//static void LogPatternsWithNearbyFunctionStart()
-//{
-//	// Constant for the number of CC interrupts to look for
-//	const int N = 3;
-//
-//	// Helper to find and format the address to avoid code bloat
-//	auto GetStart = [&](uintptr_t addr) -> uintptr_t {
-//		return (addr == 0) ? 0 : FindFunctionStart(addr, N);
-//		};
-//
-//	pir.debuglog.FormattedMessage("--------------------------------------------------------------------------------");
-//	pir.debuglog.FormattedMessage("Base          :%p|Fallout4.exe+0x00000000", (uintptr_t)pir.FO4BaseAddr);
-//
-//	// Format: [Instruction Addr] | [Func Start Addr] | Fallout4.exe+Offset
-//	pir.debuglog.FormattedMessage("achievements  :%p|%p|Fallout4.exe+0x%08X", pir.achievements, GetStart((uintptr_t)pir.achievements), (uintptr_t)pir.achievements - pir.FO4BaseAddr);
-//	pir.debuglog.FormattedMessage("A             :%p|%p|Fallout4.exe+0x%08X", pir.A, GetStart((uintptr_t)pir.A), (uintptr_t)pir.A - pir.FO4BaseAddr);
-//	pir.debuglog.FormattedMessage("B             :%p|%p|Fallout4.exe+0x%08X", pir.B, GetStart((uintptr_t)pir.B), (uintptr_t)pir.B - pir.FO4BaseAddr);
-//	pir.debuglog.FormattedMessage("C             :%p|%p|Fallout4.exe+0x%08X (OLD: %02X%02X%02X%02X%02X%02X%02X)", pir.C, GetStart((uintptr_t)pir.C), (uintptr_t)pir.C - pir.FO4BaseAddr, pir.C_OLD[0], pir.C_OLD[1], pir.C_OLD[2], pir.C_OLD[3], pir.C_OLD[4], pir.C_OLD[5], pir.C_OLD[6]);
-//	pir.debuglog.FormattedMessage("D             :%p|%p|Fallout4.exe+0x%08X (OLD: %02X%02X%02X%02X%02X%02X%02X)", pir.D, GetStart((uintptr_t)pir.D), (uintptr_t)pir.D - pir.FO4BaseAddr, pir.D_OLD[0], pir.D_OLD[1], pir.D_OLD[2], pir.D_OLD[3], pir.D_OLD[4], pir.D_OLD[5], pir.D_OLD[6]);
-//	pir.debuglog.FormattedMessage("E             :%p|%p|Fallout4.exe+0x%08X", pir.E, GetStart((uintptr_t)pir.E), (uintptr_t)pir.E - pir.FO4BaseAddr);
-//	pir.debuglog.FormattedMessage("F             :%p|%p|Fallout4.exe+0x%08X", pir.F, GetStart((uintptr_t)pir.F), (uintptr_t)pir.F - pir.FO4BaseAddr);
-//	pir.debuglog.FormattedMessage("G             :%p|%p|Fallout4.exe+0x%08X", pir.G, GetStart((uintptr_t)pir.G), (uintptr_t)pir.G - pir.FO4BaseAddr);
-//	pir.debuglog.FormattedMessage("H             :%p|%p|Fallout4.exe+0x%08X", pir.H, GetStart((uintptr_t)pir.H), (uintptr_t)pir.H - pir.FO4BaseAddr);
-//	pir.debuglog.FormattedMessage("J             :%p|%p|Fallout4.exe+0x%08X", pir.J, GetStart((uintptr_t)pir.J), (uintptr_t)pir.J - pir.FO4BaseAddr);
-//	pir.debuglog.FormattedMessage("Y             :%p|%p|Fallout4.exe+0x%08X", pir.Y, GetStart((uintptr_t)pir.Y), (uintptr_t)pir.Y - pir.FO4BaseAddr);
-//	pir.debuglog.FormattedMessage("R             :%p|%p|Fallout4.exe+0x%08X", pir.R, GetStart((uintptr_t)pir.R), (uintptr_t)pir.R - pir.FO4BaseAddr);
-//	pir.debuglog.FormattedMessage("RC            :%p|%p|Fallout4.exe+0x%08X", pir.RC, GetStart((uintptr_t)pir.RC), (uintptr_t)pir.RC - pir.FO4BaseAddr);
-//	pir.debuglog.FormattedMessage("CORRECT       :%p|%p|Fallout4.exe+0x%08X", pir.CORRECT, GetStart((uintptr_t)pir.CORRECT), (uintptr_t)pir.CORRECT - pir.FO4BaseAddr);
-//	pir.debuglog.FormattedMessage("CurrentWSRef  :%p|%p|Fallout4.exe+0x%08X", CurrentWSRef.ptr, GetStart((uintptr_t)CurrentWSRef.ptr), CurrentWSRef.r32);
-//	pir.debuglog.FormattedMessage("FirstConsole  :%p|%p|Fallout4.exe+0x%08X", FirstConsole.ptr, GetStart((uintptr_t)FirstConsole.ptr), FirstConsole.r32);
-//	pir.debuglog.FormattedMessage("FirstObScript :%p|%p|Fallout4.exe+0x%08X", FirstObScript.ptr, GetStart((uintptr_t)FirstObScript.ptr), FirstObScript.r32);
-//	pir.debuglog.FormattedMessage("GetConsoleArg :%p|%p|Fallout4.exe+0x%08X", ParseConsoleArg.ptr, GetStart((uintptr_t)ParseConsoleArg.ptr), ParseConsoleArg.r32);
-//	pir.debuglog.FormattedMessage("GetScale      :%p|%p|Fallout4.exe+0x%08X", pir.GetScale_pattern, GetStart((uintptr_t)pir.GetScale_pattern), pir.GetScale_r32);
-//	pir.debuglog.FormattedMessage("GConsole      :%p|%p|Fallout4.exe+0x%08X", gConsole.ptr, GetStart((uintptr_t)gConsole.ptr), gConsole.r32);
-//	pir.debuglog.FormattedMessage("gsnap         :%p|%p|Fallout4.exe+0x%08X", pir.gsnap, GetStart((uintptr_t)pir.gsnap), (uintptr_t)pir.gsnap - pir.FO4BaseAddr);
-//	pir.debuglog.FormattedMessage("osnap         :%p|%p|Fallout4.exe+0x%08X", pir.osnap, GetStart((uintptr_t)pir.osnap), (uintptr_t)pir.osnap - pir.FO4BaseAddr);
-//	pir.debuglog.FormattedMessage("outlines      :%p|%p|Fallout4.exe+0x%08X", pir.outlines, GetStart((uintptr_t)pir.outlines), (uintptr_t)pir.outlines - pir.FO4BaseAddr);
-//	pir.debuglog.FormattedMessage("SetScale      :%p|%p|Fallout4.exe+0x%08X", pir.SetScale_pattern, GetStart((uintptr_t)pir.SetScale_pattern), pir.SetScale_s32);
-//	pir.debuglog.FormattedMessage("PlayFileSound :%p|%p|Fallout4.exe+0x%08X", pir.PlaySound_File_pattern, GetStart((uintptr_t)pir.PlaySound_File_pattern), pir.PlaySound_File_r32);
-//	pir.debuglog.FormattedMessage("PlayUISound   :%p|%p|Fallout4.exe+0x%08X", pir.PlaySound_UI_pattern, GetStart((uintptr_t)pir.PlaySound_UI_pattern), pir.PlaySound_UI_r32);
-//	pir.debuglog.FormattedMessage("SetMotionType :%p|%p|Fallout4.exe+0x%08X", SetMotionType.ptr, GetStart((uintptr_t)SetMotionType.ptr), SetMotionType.r32);
-//	pir.debuglog.FormattedMessage("WBSelect      :%p|%p|Fallout4.exe+0x%08X", WorkbenchSelection.ptr, GetStart((uintptr_t)WorkbenchSelection.ptr), WorkbenchSelection.r32);
-//	pir.debuglog.FormattedMessage("WSSizeFinder  :%p|%p|Fallout4.exe+0x%08X", WSSize.ptr, GetStart((uintptr_t)WSSize.ptr), (uintptr_t)WSSize.ptr - pir.FO4BaseAddr);
-//	pir.debuglog.FormattedMessage("WSSizeFloats  :%p|%p|Fallout4.exe+0x%08X", WSSize.addr, GetStart((uintptr_t)WSSize.addr), WSSize.addr - pir.FO4BaseAddr);
-//	pir.debuglog.FormattedMessage("bWSMode       :%p|%p|Fallout4.exe+0x%08X", WSMode.ptr, GetStart((uintptr_t)WSMode.ptr), WSMode.r32);
-//	pir.debuglog.FormattedMessage("WSTimer       :%p|%p|Fallout4.exe+0x%08X", pir.wstimer, GetStart((uintptr_t)pir.wstimer), (uintptr_t)pir.wstimer - pir.FO4BaseAddr);
-//	pir.debuglog.FormattedMessage("Rotate        :%p|%p|%p|orig %f|slow %f", Rotate.ptr, Rotate.addr, GetStart((uintptr_t)Rotate.ptr), pir.fOriginalROTATE, pir.fSlowerROTATE);
-//	pir.debuglog.FormattedMessage("Zoom          :%p|%p|%p|orig %f|slow %f", Zoom.ptr, Zoom.addr, GetStart((uintptr_t)Zoom.ptr), pir.fOriginalZOOM, pir.fSlowerZOOM);
-//	pir.debuglog.FormattedMessage("--------------------------------------------------------------------------------");
-//}
+static uintptr_t FindFunctionStart(uintptr_t startAddress, int nTheNumberOfCC = 3, size_t maxScanDistance = 0x10000) {
+	if (startAddress == 0 || nTheNumberOfCC <= 0) return 0;
+
+	uint8_t* currentPtr = reinterpret_cast<uint8_t*>(startAddress);
+	int consecutiveCC = 0;
+
+	// Scan backwards
+	for (size_t i = 0; i < maxScanDistance; ++i) {
+		// Decrement pointer first to check the byte before the current instruction
+		currentPtr--;
+
+		// Check if the current byte is an INT 3 (0xCC)
+		if (*currentPtr == 0xCC) {
+			consecutiveCC++;
+		}
+		else {
+			// Reset counter if we hit a non-CC byte
+			consecutiveCC = 0;
+		}
+
+		// If we found our N consecutive CCs
+		if (consecutiveCC == nTheNumberOfCC) {
+			// The function start is the address immediately after the CC block
+			// Result = Address of last CC + 1
+			return reinterpret_cast<uintptr_t>(currentPtr + nTheNumberOfCC);
+		}
+	}
+
+	return 0; // Return 0 if the pattern wasn't found within the safety distance
+}
+
+static void LogPatterns2()
+{
+	// Constant for the number of CC interrupts to look for
+	const int N = 3;
+
+	// Helper to find and format the address to avoid code bloat
+	auto GetStart = [&](uintptr_t addr) -> uintptr_t {
+		return (addr == 0) ? 0 : FindFunctionStart(addr, N);
+		};
+
+	pir.debuglog.FormattedMessage("--------------------------------------------------------------------------------");
+	pir.debuglog.FormattedMessage("Base          :%p|Fallout4.exe+0x00000000", (uintptr_t)pir.FO4BaseAddr);
+
+	// Format: [Instruction Addr] | [Func Start Addr] | Fallout4.exe+Offset
+	pir.debuglog.FormattedMessage("achievements  :%p|%p|Fallout4.exe+0x%08X", pir.achievements, GetStart((uintptr_t)pir.achievements), (uintptr_t)pir.achievements - pir.FO4BaseAddr);
+	pir.debuglog.FormattedMessage("A             :%p|%p|Fallout4.exe+0x%08X", pir.A, GetStart((uintptr_t)pir.A), (uintptr_t)pir.A - pir.FO4BaseAddr);
+	pir.debuglog.FormattedMessage("B             :%p|%p|Fallout4.exe+0x%08X", pir.B, GetStart((uintptr_t)pir.B), (uintptr_t)pir.B - pir.FO4BaseAddr);
+	pir.debuglog.FormattedMessage("C             :%p|%p|Fallout4.exe+0x%08X (OLD: %02X%02X%02X%02X%02X%02X%02X)", pir.C, GetStart((uintptr_t)pir.C), (uintptr_t)pir.C - pir.FO4BaseAddr, pir.C_OLD[0], pir.C_OLD[1], pir.C_OLD[2], pir.C_OLD[3], pir.C_OLD[4], pir.C_OLD[5], pir.C_OLD[6]);
+	pir.debuglog.FormattedMessage("D             :%p|%p|Fallout4.exe+0x%08X (OLD: %02X%02X%02X%02X%02X%02X%02X)", pir.D, GetStart((uintptr_t)pir.D), (uintptr_t)pir.D - pir.FO4BaseAddr, pir.D_OLD[0], pir.D_OLD[1], pir.D_OLD[2], pir.D_OLD[3], pir.D_OLD[4], pir.D_OLD[5], pir.D_OLD[6]);
+	pir.debuglog.FormattedMessage("E             :%p|%p|Fallout4.exe+0x%08X", pir.E, GetStart((uintptr_t)pir.E), (uintptr_t)pir.E - pir.FO4BaseAddr);
+	pir.debuglog.FormattedMessage("F             :%p|%p|Fallout4.exe+0x%08X", pir.F, GetStart((uintptr_t)pir.F), (uintptr_t)pir.F - pir.FO4BaseAddr);
+	pir.debuglog.FormattedMessage("G             :%p|%p|Fallout4.exe+0x%08X", pir.G, GetStart((uintptr_t)pir.G), (uintptr_t)pir.G - pir.FO4BaseAddr);
+	pir.debuglog.FormattedMessage("H             :%p|%p|Fallout4.exe+0x%08X", pir.H, GetStart((uintptr_t)pir.H), (uintptr_t)pir.H - pir.FO4BaseAddr);
+	pir.debuglog.FormattedMessage("J             :%p|%p|Fallout4.exe+0x%08X", pir.J, GetStart((uintptr_t)pir.J), (uintptr_t)pir.J - pir.FO4BaseAddr);
+	pir.debuglog.FormattedMessage("Y             :%p|%p|Fallout4.exe+0x%08X", pir.Y, GetStart((uintptr_t)pir.Y), (uintptr_t)pir.Y - pir.FO4BaseAddr);
+	pir.debuglog.FormattedMessage("R             :%p|%p|Fallout4.exe+0x%08X", pir.R, GetStart((uintptr_t)pir.R), (uintptr_t)pir.R - pir.FO4BaseAddr);
+	pir.debuglog.FormattedMessage("RC            :%p|%p|Fallout4.exe+0x%08X", pir.RC, GetStart((uintptr_t)pir.RC), (uintptr_t)pir.RC - pir.FO4BaseAddr);
+	pir.debuglog.FormattedMessage("CORRECT       :%p|%p|Fallout4.exe+0x%08X", pir.CORRECT, GetStart((uintptr_t)pir.CORRECT), (uintptr_t)pir.CORRECT - pir.FO4BaseAddr);
+	pir.debuglog.FormattedMessage("CurrentWSRef  :%p|%p|Fallout4.exe+0x%08X", CurrentWSRef.ptr, GetStart((uintptr_t)CurrentWSRef.ptr), CurrentWSRef.r32);
+	pir.debuglog.FormattedMessage("FirstConsole  :%p|%p|Fallout4.exe+0x%08X", FirstConsole.ptr, GetStart((uintptr_t)FirstConsole.ptr), FirstConsole.r32);
+	pir.debuglog.FormattedMessage("FirstObScript :%p|%p|Fallout4.exe+0x%08X", FirstObScript.ptr, GetStart((uintptr_t)FirstObScript.ptr), FirstObScript.r32);
+	pir.debuglog.FormattedMessage("GetConsoleArg :%p|%p|Fallout4.exe+0x%08X", ParseConsoleArg.ptr, GetStart((uintptr_t)ParseConsoleArg.ptr), ParseConsoleArg.r32);
+	pir.debuglog.FormattedMessage("GetScale      :%p|%p|Fallout4.exe+0x%08X", pir.GetScale_pattern, GetStart((uintptr_t)pir.GetScale_pattern), pir.GetScale_r32);
+	pir.debuglog.FormattedMessage("GConsole      :%p|%p|Fallout4.exe+0x%08X", gConsole.ptr, GetStart((uintptr_t)gConsole.ptr), gConsole.r32);
+	pir.debuglog.FormattedMessage("gsnap         :%p|%p|Fallout4.exe+0x%08X", pir.gsnap, GetStart((uintptr_t)pir.gsnap), (uintptr_t)pir.gsnap - pir.FO4BaseAddr);
+	pir.debuglog.FormattedMessage("osnap         :%p|%p|Fallout4.exe+0x%08X", pir.osnap, GetStart((uintptr_t)pir.osnap), (uintptr_t)pir.osnap - pir.FO4BaseAddr);
+	pir.debuglog.FormattedMessage("outlines      :%p|%p|Fallout4.exe+0x%08X", pir.outlines, GetStart((uintptr_t)pir.outlines), (uintptr_t)pir.outlines - pir.FO4BaseAddr);
+	pir.debuglog.FormattedMessage("SetScale      :%p|%p|Fallout4.exe+0x%08X", pir.SetScale_pattern, GetStart((uintptr_t)pir.SetScale_pattern), pir.SetScale_s32);
+	pir.debuglog.FormattedMessage("PlayFileSound :%p|%p|Fallout4.exe+0x%08X", pir.PlaySound_File_pattern, GetStart((uintptr_t)pir.PlaySound_File_pattern), pir.PlaySound_File_r32);
+	pir.debuglog.FormattedMessage("PlayUISound   :%p|%p|Fallout4.exe+0x%08X", pir.PlaySound_UI_pattern, GetStart((uintptr_t)pir.PlaySound_UI_pattern), pir.PlaySound_UI_r32);
+	pir.debuglog.FormattedMessage("SetMotionType :%p|%p|Fallout4.exe+0x%08X", SetMotionType.ptr, GetStart((uintptr_t)SetMotionType.ptr), SetMotionType.r32);
+	pir.debuglog.FormattedMessage("WBSelect      :%p|%p|Fallout4.exe+0x%08X", WorkbenchSelection.ptr, GetStart((uintptr_t)WorkbenchSelection.ptr), WorkbenchSelection.r32);
+	pir.debuglog.FormattedMessage("WSSizeFinder  :%p|%p|Fallout4.exe+0x%08X", WSSize.ptr, GetStart((uintptr_t)WSSize.ptr), (uintptr_t)WSSize.ptr - pir.FO4BaseAddr);
+	pir.debuglog.FormattedMessage("WSSizeFloats  :%p|%p|Fallout4.exe+0x%08X", WSSize.addr, GetStart((uintptr_t)WSSize.addr), WSSize.addr - pir.FO4BaseAddr);
+	pir.debuglog.FormattedMessage("bWSMode       :%p|%p|Fallout4.exe+0x%08X", WSMode.ptr, GetStart((uintptr_t)WSMode.ptr), WSMode.r32);
+	pir.debuglog.FormattedMessage("WSTimer       :%p|%p|Fallout4.exe+0x%08X", pir.wstimer, GetStart((uintptr_t)pir.wstimer), (uintptr_t)pir.wstimer - pir.FO4BaseAddr);
+	pir.debuglog.FormattedMessage("Rotate        :%p|%p|%p|orig %f|slow %f", Rotate.ptr, Rotate.addr, GetStart((uintptr_t)Rotate.ptr), pir.fOriginalROTATE, pir.fSlowerROTATE);
+	pir.debuglog.FormattedMessage("Zoom          :%p|%p|%p|orig %f|slow %f", Zoom.ptr, Zoom.addr, GetStart((uintptr_t)Zoom.ptr), pir.fOriginalZOOM, pir.fSlowerZOOM);
+	pir.debuglog.FormattedMessage("--------------------------------------------------------------------------------");
+}
 
 // log all the memory patterns to the log file
 static void LogPatterns()
@@ -941,7 +942,7 @@ static bool Toggle_Achievements()
 // toggle consolenameref
 static bool Toggle_ConsoleNameRef()
 {
-	if (pir.cnref_GetRefName_pattern == false || pir.cnref_original_call_pattern == false) {
+	if (!pir.cnref_GetRefName_pattern || !pir.cnref_original_call_pattern) {
 		return false;
 	}
 
@@ -1112,8 +1113,7 @@ static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thi
 		// debug and tests
 		case ConsoleSwitch("dumpcmds"):     DumpCmds();             break;
 		case ConsoleSwitch("logref"):       LogWSRef();             break;
-		case ConsoleSwitch("print"):        Toggle_ConsolePrint();  break;
-		
+		case ConsoleSwitch("print"):        Toggle_ConsolePrint();  break;		
 		case ConsoleSwitch("sound"):        PIR_PlayFileSound(param2.data());  break;
 		case ConsoleSwitch("uisound"):      PIR_PlayUISound(param2.data());    break;
 
@@ -1605,7 +1605,6 @@ static void InitPIR()
 	}
 }
 
-	
 
 
 extern "C" {
@@ -1646,6 +1645,7 @@ extern "C" {
 		pir.end_tickcount = GetTickCount64() - pir.start_tickcount;
 		pirlog("finished in %llums.", pir.end_tickcount);
 		LogPatterns();
+		LogPatterns2();
 
 		return true;
 	}
@@ -1658,7 +1658,7 @@ extern "C" {
 		"RandyConstan",
 		0,
 		0,
-		{	RUNTIME_VERSION_1_11_191, 1
+		{	RUNTIME_VERSION_1_11_221, 1
 		},
 		0,
 	};
