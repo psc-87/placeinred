@@ -131,6 +131,7 @@ public:
     bool    ACHIEVEMENTS_ENABLED = false; // pir 7
     bool    ConsoleNameRef_ENABLED = false; // pir cnref
     bool    PrintConsoleMessages = true;
+    bool    bAllowConsoleInSurvival = false;
 
     // -------------------------------------------------------------------------------------
     // Transformation Constants
@@ -167,6 +168,7 @@ public:
     uintptr_t* outlines = nullptr;
     uintptr_t* achievements = nullptr;
     uintptr_t* moveworkbench = nullptr;
+    uintptr_t* survivalconsole = nullptr;
 
     // -------------------------------------------------------------------------------------
     // Patch Bytes (Ops Codes)
