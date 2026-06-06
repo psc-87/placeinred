@@ -1,7 +1,7 @@
 #include "main.h"
 
 
-UInt32 pluginVersion = 14;
+UInt32 pluginVersion = 15;
 static PlaceInRed pir;
 
 constexpr uintptr_t WS_MODE_OFFSET_IN_WORKSHOP = 0x0;   // UInt8: 1 = in workshop mode
@@ -215,7 +215,6 @@ static bool FoundPatterns()
 		 placeinred.achievements - not a showstopper
 		 ConsoleRefCallFinder - copy of another mod never required
 		 GDataHandlerFinder - not using yet
-
 		*/
 
 		return true;
