@@ -1,7 +1,7 @@
 #include "main.h"
 
 
-UInt32 pluginVersion = 15;
+UInt32 pluginVersion = 16;
 static PlaceInRed pir;
 
 constexpr uintptr_t WS_MODE_OFFSET_IN_WORKSHOP = 0x0;   // UInt8: 1 = in workshop mode
