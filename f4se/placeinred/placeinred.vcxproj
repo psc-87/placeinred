@@ -48,7 +48,7 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <ForcedIncludeFiles>common/IPrefix.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <AdditionalIncludeDirectories>$(SolutionDir);..\f4se;..\f4se_common;..\..\common</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir);..\f4se;..\f4se_common;..\common</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
@@ -59,7 +59,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <FullProgramDatabaseFile>false</FullProgramDatabaseFile>
       <ProgramDatabaseFile />
-      <AdditionalLibraryDirectories>..\f4se\x64\Release\;..\f4se_common\x64\Release\;..\x64\Release\;..\placeinred\x64\Release\;..\..\common\common\x64_vc11\Release\</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>..\x64\Release\</AdditionalLibraryDirectories>
       <AdditionalDependencies>f4se_1_11_221.lib;$(CoreLibraryDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
