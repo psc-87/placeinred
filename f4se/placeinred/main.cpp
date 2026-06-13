@@ -263,36 +263,36 @@ static bool FoundPatterns()
 	}
 }
 
-static uintptr_t FindFunctionStart(uintptr_t startAddress, int nTheNumberOfCC = 3, size_t maxScanDistance = 0x10000) {
-	if (startAddress == 0 || nTheNumberOfCC <= 0) return 0;
-
-	uint8_t* currentPtr = reinterpret_cast<uint8_t*>(startAddress);
-	int consecutiveCC = 0;
-
-	// Scan backwards
-	for (size_t i = 0; i < maxScanDistance; ++i) {
-		// Decrement pointer first to check the byte before the current instruction
-		currentPtr--;
-
-		// Check if the current byte is an INT 3 (0xCC)
-		if (*currentPtr == 0xCC) {
-			consecutiveCC++;
-		}
-		else {
-			// Reset counter if we hit a non-CC byte
-			consecutiveCC = 0;
-		}
-
-		// If we found our N consecutive CCs
-		if (consecutiveCC == nTheNumberOfCC) {
-			// The function start is the address immediately after the CC block
-			// Result = Address of last CC + 1
-			return reinterpret_cast<uintptr_t>(currentPtr + nTheNumberOfCC);
-		}
-	}
-
-	return 0; // Return 0 if the pattern wasn't found within the safety distance
-}
+//static uintptr_t FindFunctionStart(uintptr_t startAddress, int nTheNumberOfCC = 3, size_t maxScanDistance = 0x10000) {
+//	if (startAddress == 0 || nTheNumberOfCC <= 0) return 0;
+//
+//	uint8_t* currentPtr = reinterpret_cast<uint8_t*>(startAddress);
+//	int consecutiveCC = 0;
+//
+//	// Scan backwards
+//	for (size_t i = 0; i < maxScanDistance; ++i) {
+//		// Decrement pointer first to check the byte before the current instruction
+//		currentPtr--;
+//
+//		// Check if the current byte is an INT 3 (0xCC)
+//		if (*currentPtr == 0xCC) {
+//			consecutiveCC++;
+//		}
+//		else {
+//			// Reset counter if we hit a non-CC byte
+//			consecutiveCC = 0;
+//		}
+//
+//		// If we found our N consecutive CCs
+//		if (consecutiveCC == nTheNumberOfCC) {
+//			// The function start is the address immediately after the CC block
+//			// Result = Address of last CC + 1
+//			return reinterpret_cast<uintptr_t>(currentPtr + nTheNumberOfCC);
+//		}
+//	}
+//
+//	return 0; // Return 0 if the pattern wasn't found within the safety distance
+//}
 
 // log all the memory patterns to the log file
 static void LogPatterns()
