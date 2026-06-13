@@ -1,12 +1,7 @@
 #include "main.h"
 
-
 UInt32 pluginVersion = 16;
 static PlaceInRed pir;
-
-constexpr uintptr_t WS_MODE_OFFSET_IN_WORKSHOP = 0x0;   // UInt8: 1 = in workshop mode
-constexpr uintptr_t WS_MODE_OFFSET_GRABBED = 0xB;   // UInt8: 1 = object grabbed
-constexpr UInt8     WS_MODE_TRUE = 0x01;
 
 static SimpleFinder FirstConsole;
 static SimpleFinder FirstObScript;
@@ -21,10 +16,141 @@ static SimpleFinder Rotate;
 static SimpleFinder SetMotionType;
 static SimpleFinder ParseConsoleArg;
 
-// Construct Utility::pattern synchronously so the async task captures an owned copy
-// and avoids undefined behavior from dangling pattern storage.
-// Asynchronously find a single pattern match.
-// If the pattern is not found or the scan faults, ptr_address is set to 0.
+constexpr uintptr_t WS_MODE_OFFSET_IN_WORKSHOP = 0x0;   // UInt8: 1 = in workshop mode
+constexpr uintptr_t WS_MODE_OFFSET_GRABBED = 0xB;   // UInt8: 1 = object grabbed
+constexpr UInt8     WS_MODE_TRUE = 0x01;
+
+// Simple function to read memory (safe version)
+static bool ReadMemory(uintptr_t addr, void* data, size_t len)
+{
+	if (!addr || !data || len == 0)
+		return false;
+
+	__try
+	{
+		memcpy(data, reinterpret_cast<const void*>(addr), len);
+		return true;
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER)
+	{
+		return false;
+	}
+}
+
+// Read a UInt8 flag from WSMode safely
+static bool ReadWSModeFlag(uintptr_t offset)
+{
+	if (!WSMode.ptr)
+		return false;
+
+	UInt8 value = 0;
+	if (!ReadMemory(uintptr_t(WSMode.addr) + offset, &value, sizeof(value)))
+		return false;
+
+	return value == WS_MODE_TRUE;
+}
+
+// Determine if player is in workshop mode
+static bool IsPlayerInWorkshopMode()
+{
+	return ReadWSModeFlag(WS_MODE_OFFSET_IN_WORKSHOP);
+}
+
+// Is the player grabbing the current workshop ref
+static bool IsCurrentWSRefGrabbed()
+{
+	return ReadWSModeFlag(WS_MODE_OFFSET_GRABBED);
+}
+
+// string to float
+static float FloatFromString(std::string fString, float min = 0.001, float max = 999.999, float error = 0)
+{
+	float theFloat = 0;
+	try
+	{
+		theFloat = std::stof(fString);
+	}
+	catch (...)
+	{
+		return error;
+	}
+	if (theFloat > min && theFloat < max) {
+		return theFloat;
+	}
+	else {
+		return error;
+	}
+}
+
+static void StripNewLinesAndPipesToBuffer(const char* in, char* out, size_t outSize)
+{
+	if (!out || outSize == 0) return;
+	out[0] = '\0';
+	if (!in) return;
+
+	size_t j = 0;
+	for (size_t i = 0; in[i] && j + 1 < outSize; ++i)
+	{
+		const char c = in[i];
+		if (c != '\n' && c != '\r' && c != '|')
+			out[j++] = c;
+	}
+	out[j] = '\0';
+}
+
+// get a rel32 from a pattern match
+static SInt32 GetRel32FromPattern(uintptr_t instr, UInt64 start, UInt64 end, UInt64 shift = 0)
+{
+	SInt32 rel = 0;
+	if (!ReadMemory(instr + start, &rel, sizeof(rel)))
+		return 0;
+
+	return (SInt32)(((instr + end) + rel - pir.FO4BaseAddr) + shift);
+}
+
+// read the address at an address+offset
+static uintptr_t GetSinglePointer(uintptr_t address, UInt32 offset)
+{
+	uintptr_t result = 0;
+	if (ReadMemory(address + offset, &result, sizeof(uintptr_t))) {
+		return result;
+	}
+	else {
+		return 0;
+	}
+}
+
+// follow multiple pointers with offsets to get final address
+static uintptr_t GimmeMultiPointer(uintptr_t baseAddress, UInt32* offsets, UInt32 numOffsets)
+{
+	if (!baseAddress)
+		return 0;
+
+	uintptr_t address = baseAddress;
+
+	for (UInt32 i = 0; i < numOffsets; i++) {
+		if (!ReadMemory(address + offsets[i], &address, sizeof(address)))
+			return 0;
+	}
+	return address;
+}
+
+/**
+ * @brief Asynchronously scans memory for a specific byte pattern.
+ *
+ * @param ptr_address Reference to the output variable. Will be set to the matched
+ * address, or 0 if the pattern is not found or the scan faults.
+ * @param pattern     The byte pattern string literal to search for.
+ * @return            A std::future<void> representing the asynchronous task execution.
+ *
+ * @note Lifetime Safety: The Utility::pattern is constructed synchronously before
+ * launching the thread. The lambda then captures this owned copy by value,
+ * preventing undefined behavior from dangling string references.
+ *
+ * @note Memory Safety: The internal scan is guarded by Structured Exception Handling
+ * (__try / __except) to gracefully catch access violations (e.g., reading past
+ * page boundaries or into unmapped memory) without crashing the process.
+ */
 template <typename T, size_t N>
 std::future<void> FindPatternAsync(T& ptr_address, const char(&pattern)[N])
 {
@@ -107,95 +233,7 @@ static bool GetBoolFromINIString(const std::string& s, bool defaultValue = false
 	return defaultValue;
 }
 
-// string to float
-static float FloatFromString(std::string fString, float min = 0.001, float max = 999.999, float error = 0)
-{
-	float theFloat = 0;
-	try
-	{
-		theFloat = std::stof(fString);
-	}
-	catch (...)
-	{
-		return error;
-	}
-	if (theFloat > min && theFloat < max) {
-		return theFloat;
-	}
-	else {
-		return error;
-	}
-}
 
-static void StripNewLinesAndPipesToBuffer(const char* in, char* out, size_t outSize)
-{
-	if (!out || outSize == 0) return;
-	out[0] = '\0';
-	if (!in) return;
-
-	size_t j = 0;
-	for (size_t i = 0; in[i] && j + 1 < outSize; ++i)
-	{
-		const char c = in[i];
-		if (c != '\n' && c != '\r' && c != '|')
-			out[j++] = c;
-	}
-	out[j] = '\0';
-}
-
-// Simple function to read memory (safe version)
-static bool ReadMemory(uintptr_t addr, void* data, size_t len)
-{
-	if (!addr || !data || len == 0)
-		return false;
-
-	__try
-	{
-		memcpy(data, reinterpret_cast<const void*>(addr), len);
-		return true;
-	}
-	__except (EXCEPTION_EXECUTE_HANDLER)
-	{
-		return false;
-	}
-}
-
-// get a rel32 from a pattern match
-static SInt32 GetRel32FromPattern(uintptr_t instr, UInt64 start, UInt64 end, UInt64 shift = 0)
-{
-	SInt32 rel = 0;
-	if (!ReadMemory(instr + start, &rel, sizeof(rel)))
-		return 0;
-
-	return (SInt32)(((instr + end) + rel - pir.FO4BaseAddr) + shift);
-}
-
-// read the address at an address+offset
-static uintptr_t GetSinglePointer(uintptr_t address, UInt32 offset)
-{
-	uintptr_t result = 0;
-	if (ReadMemory(address + offset, &result, sizeof(uintptr_t))) {
-		return result;
-	}
-	else {
-		return 0;
-	}
-}
-
-// follow multiple pointers with offsets to get final address
-static uintptr_t GimmeMultiPointer(uintptr_t baseAddress, UInt32* offsets, UInt32 numOffsets)
-{
-	if (!baseAddress)
-		return 0;
-
-	uintptr_t address = baseAddress;
-
-	for (UInt32 i = 0; i < numOffsets; i++) {
-		if (!ReadMemory(address + offsets[i], &address, sizeof(address)))
-			return 0;
-	}
-	return address;
-}
 
 //did we find all the required memory patterns?
 static bool FoundPatterns()
@@ -299,31 +337,6 @@ static void LogPatterns()
 	pir.debuglog.FormattedMessage("--------------------------------------------------------------------------------");
 }
 
-
-// Read a UInt8 flag from WSMode safely
-static bool ReadWSModeFlag(uintptr_t offset)
-{
-	if (!WSMode.ptr)
-		return false;
-
-	UInt8 value = 0;
-	if (!ReadMemory(uintptr_t(WSMode.addr) + offset, &value, sizeof(value)))
-		return false;
-
-	return value == WS_MODE_TRUE;
-}
-
-// Determine if player is in workshop mode
-static bool IsPlayerInWorkshopMode()
-{
-	return ReadWSModeFlag(WS_MODE_OFFSET_IN_WORKSHOP);
-}
-
-// Is the player grabbing the current workshop ref
-static bool IsCurrentWSRefGrabbed()
-{
-	return ReadWSModeFlag(WS_MODE_OFFSET_GRABBED);
-}
 
 // return the currently selected workshop ref with some safety checks
 static TESObjectREFR* GetCurrentWSRef(bool bOnlySelectReferences=1)
