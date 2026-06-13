@@ -429,4 +429,7 @@ FodyWeavers.xsd
 *.msp
 
 # Custom Project Exclusions
+/.gitattributes
 /f4se/placeinred/test.txt
+/.gitignore
+/.git/
