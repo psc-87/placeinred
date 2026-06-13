@@ -368,3 +368,6 @@ FodyWeavers.xsd
 /common/common/common_vc11.vcxproj
 /common/common/common_vc11.vcxproj.filters
 /f4se/placeinred/test.txt
+
+/common/common/
+/common/common/common-master.zip
