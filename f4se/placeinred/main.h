@@ -259,39 +259,6 @@ public:
     // -------------------------------------------------------------------------------------
     // Help Message
     // -------------------------------------------------------------------------------------
-    /*const char* ConsoleHelpMSG =
-        "PlaceInRed (pir) — Command Reference\n"
-        "-----------------------------------\n"
-        "\n"
-        "Toggles:\n"
-        "  pir toggle              Toggle Place in Red\n"
-        "  pir osnap               Toggle object snapping\n"
-        "  pir gsnap               Toggle ground snapping\n"
-        "  pir slow                Toggle slower rotate/zoom speed\n"
-        "  pir workshopsize        Toggle unlimited workshop build size\n"
-        "  pir outlines            Toggle object outlines\n"
-        "  pir achievements        Toggle achievements with mods\n"
-        "Scaling:\n"
-        "  pir scaleup<N>          Scale up by N percent\n"
-        "  pir scaledown<N>        Scale down by N percent\n"
-        "    N = 1, 2, 5, 10, 25, 50, 75, 100\n"
-        "Rotation (Degrees):\n"
-        "  pir x<N>                Rotate +N degrees (X axis)\n"
-        "  pir x-<N>               Rotate -N degrees (X axis)\n"
-        "  pir y<N>                Rotate +N degrees (Y axis)\n"
-        "  pir y-<N>               Rotate -N degrees (Y axis)\n"
-        "  pir z<N>                Rotate +N degrees (Z axis)\n"
-        "  pir z-<N>               Rotate -N degrees (Z axis)\n"
-        "    N = 0.1, 0.5, 1, 2, 5, 10, 15, 30, 45\n"
-        "    c = custom degrees in .ini\n"
-        "Lock object in place:\n"
-        "  pir lock                Lock object (disable physics)\n"
-        "  pir lockq               Lock object (no sound fx)\n"
-        "  pir unlock              Unlock object (enable physics)\n"
-        "Misc:\n"
-        "  pir wb                  Toggle allow moving workbench\n"
-        "  pir cnref               Show ref name in console when clicked\n";
-    */
     const char* ConsoleHelpMSG =
         "PlaceInRed (pir) - Command Reference\n"
         "==============================================================\n"
@@ -327,9 +294,12 @@ public:
 
 
 private:
-
-
+    // private things
 };
+
+
+
+
 
 
 
