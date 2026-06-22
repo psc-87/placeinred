@@ -73,11 +73,9 @@
     <ClCompile Include="main.cpp">
       <FavorSizeOrSpeed Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Speed</FavorSizeOrSpeed>
     </ClCompile>
-    <ClCompile Include="pattern.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="main.h" />
-    <ClInclude Include="pattern.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="exports.def" />

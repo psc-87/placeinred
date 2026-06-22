@@ -9,9 +9,13 @@
 #include <future>
 #include <array>
 #include <string>
+#include <string_view>
+#include <span>
+#include <charconv>
+#include <cstring>
+#include <cstdint>
 
 #include "shlobj.h"
-#include "pattern.h"
 
 // F4SE Common
 #include "f4se_common/BranchTrampoline.h"
@@ -31,6 +35,7 @@
 #include "f4se/PluginAPI.h"
 #include "f4se/GameMenus.h"
 #include "f4se/ScaleformLoader.h"
+
 
 // =========================================================================================
 // LOGGING & MACROS

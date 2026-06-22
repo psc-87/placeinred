@@ -151,32 +151,150 @@ static uintptr_t GimmeMultiPointer(uintptr_t baseAddress, UInt32* offsets, UInt3
  * (__try / __except) to gracefully catch access violations (e.g., reading past
  * page boundaries or into unmapped memory) without crashing the process.
  */
+//template <typename T, size_t N>
+//std::future<void> FindPatternAsync(T& ptr_address, const char(&pattern)[N])
+//{
+//	Utility::pattern pat(pattern); // owned copy, lifetime-safe
+//
+//	return std::async(std::launch::async,
+//		[&ptr_address, pat]() mutable
+//		{
+//			// Default: not found
+//			ptr_address = 0;
+//
+//			// The scan itself can fault (end-of-code reads, SSE loads),
+//			// so guard only the scan step.
+//			__try
+//			{
+//				pat.count(1);
+//			}
+//			__except (EXCEPTION_EXECUTE_HANDLER)
+//			{
+//				return;
+//			}
+//
+//			// Safe: returns nullptr if no matches
+//			auto match = pat.get(0).get<uintptr_t>();
+//			if (match)
+//				pirlog("(%llums)", GetTickCount64() - pir.start_tickcount);
+//				ptr_address = (T)match;
+//		}
+//	);
+//}
+
+//template <typename T, size_t N>
+//std::future<void> FindPatternAsync(T& ptr_address, const char(&pattern)[N])
+//{
+//	Utility::pattern pat(pattern);
+//
+//	return std::async(std::launch::async,
+//		// 1. Capture by value into a fresh std::string
+//		[&ptr_address, pat, pattern_str = std::string(pattern)]() mutable
+//		{
+//			ptr_address = 0;
+//
+//			__try { pat.count(1); }
+//			__except (EXCEPTION_EXECUTE_HANDLER) { return; }
+//
+//			auto match = pat.get(0).get<uintptr_t>();
+//
+//			if (match)
+//			{
+//				// 2. Use .c_str() for your printf-style logger
+//				pirlog("(%llums) Found [%s]", GetTickCount64() - pir.start_tickcount, pattern_str.c_str());
+//				ptr_address = (T)match;
+//			}
+//		}
+//	);
+//}
+
+inline std::span<const uint8_t> GetFalloutCodeSection()
+{
+	static auto text_section = []() -> std::span<const uint8_t> {
+		HMODULE mod = GetModuleHandleW(nullptr);
+		auto* dos = reinterpret_cast<IMAGE_DOS_HEADER*>(mod);
+		auto* nt = reinterpret_cast<IMAGE_NT_HEADERS*>((uint8_t*)mod + dos->e_lfanew);
+		auto* section = IMAGE_FIRST_SECTION(nt);
+
+		for (WORD i = 0; i < nt->FileHeader.NumberOfSections; ++i, ++section) {
+			if (std::memcmp(section->Name, ".text", 5) == 0) {
+				return {
+					reinterpret_cast<uint8_t*>(mod) + section->VirtualAddress,
+					section->SizeOfRawData
+				};
+			}
+		}
+		return { reinterpret_cast<uint8_t*>(mod), nt->OptionalHeader.SizeOfImage };
+		}();
+
+	return text_section;
+}
+
+inline uintptr_t PatternScan(std::span<const uint8_t> memory, std::string_view signature)
+{
+	struct PatternByte { uint8_t val; bool wildcard; };
+	std::vector<PatternByte> pattern;
+	pattern.reserve(signature.size() / 2);
+
+	for (size_t i = 0; i < signature.size(); ++i) {
+		if (signature[i] == ' ') continue;
+		if (signature[i] == '?') {
+			pattern.push_back({ 0, true });
+			if (i + 1 < signature.size() && signature[i + 1] == '?') i++;
+		}
+		else if (i + 1 < signature.size()) {
+			uint8_t val = 0;
+			std::from_chars(signature.data() + i, signature.data() + i + 2, val, 16);
+			pattern.push_back({ val, false });
+			i++;
+		}
+	}
+
+	if (pattern.empty() || memory.size() < pattern.size()) return 0;
+
+	const uint8_t* data = memory.data();
+	const size_t scan_limit = memory.size() - pattern.size();
+
+	for (size_t i = 0; i <= scan_limit; ) {
+		const auto& first = pattern[0];
+
+		if (!first.wildcard) {
+			const void* match = std::memchr(data + i, first.val, (scan_limit - i) + 1);
+			if (!match) break;
+			i = static_cast<const uint8_t*>(match) - data;
+		}
+
+		bool found = true;
+		for (size_t j = 1; j < pattern.size(); ++j) {
+			if (!pattern[j].wildcard && data[i + j] != pattern[j].val) {
+				found = false;
+				break;
+			}
+		}
+
+		if (found) return reinterpret_cast<uintptr_t>(data + i);
+		i++;
+	}
+
+	return 0;
+}
+
 template <typename T, size_t N>
 std::future<void> FindPatternAsync(T& ptr_address, const char(&pattern)[N])
 {
-	Utility::pattern pat(pattern); // owned copy, lifetime-safe
-
 	return std::async(std::launch::async,
-		[&ptr_address, pat]() mutable
+		[&ptr_address, pattern_str = std::string(pattern)]() mutable
 		{
-			// Default: not found
 			ptr_address = 0;
 
-			// The scan itself can fault (end-of-code reads, SSE loads),
-			// so guard only the scan step.
-			__try
-			{
-				pat.count(1);
-			}
-			__except (EXCEPTION_EXECUTE_HANDLER)
-			{
-				return;
-			}
+			std::span<const uint8_t> mem = GetFalloutCodeSection();
+			uintptr_t match = PatternScan(mem, pattern_str);
 
-			// Safe: returns nullptr if no matches
-			auto match = pat.get(0).get<uintptr_t>();
 			if (match)
+			{
+				//pirlog("(%llums) Found [%s]", GetTickCount64() - pir.start_tickcount, pattern_str.c_str());
 				ptr_address = (T)match;
+			}
 		}
 	);
 }
@@ -250,7 +368,7 @@ static bool FoundPatterns()
 	{
 		/*
 		 allow plugin to load even if these arent found:
-		 placeinred.achievements - not a showstopper
+		 achievements - not a showstopper
 		 ConsoleRefCallFinder - copy of another mod never required
 		 GDataHandlerFinder - not using yet
 		*/
@@ -262,37 +380,6 @@ static bool FoundPatterns()
 		return false;
 	}
 }
-
-//static uintptr_t FindFunctionStart(uintptr_t startAddress, int nTheNumberOfCC = 3, size_t maxScanDistance = 0x10000) {
-//	if (startAddress == 0 || nTheNumberOfCC <= 0) return 0;
-//
-//	uint8_t* currentPtr = reinterpret_cast<uint8_t*>(startAddress);
-//	int consecutiveCC = 0;
-//
-//	// Scan backwards
-//	for (size_t i = 0; i < maxScanDistance; ++i) {
-//		// Decrement pointer first to check the byte before the current instruction
-//		currentPtr--;
-//
-//		// Check if the current byte is an INT 3 (0xCC)
-//		if (*currentPtr == 0xCC) {
-//			consecutiveCC++;
-//		}
-//		else {
-//			// Reset counter if we hit a non-CC byte
-//			consecutiveCC = 0;
-//		}
-//
-//		// If we found our N consecutive CCs
-//		if (consecutiveCC == nTheNumberOfCC) {
-//			// The function start is the address immediately after the CC block
-//			// Result = Address of last CC + 1
-//			return reinterpret_cast<uintptr_t>(currentPtr + nTheNumberOfCC);
-//		}
-//	}
-//
-//	return 0; // Return 0 if the pattern wasn't found within the safety distance
-//}
 
 // log all the memory patterns to the log file
 static void LogPatterns()
@@ -312,7 +399,7 @@ static void LogPatterns()
 	pir.debuglog.FormattedMessage("J               :%p|Fallout4.exe+0x%08X", pir.J, (uintptr_t)pir.J - pir.FO4BaseAddr);
 	pir.debuglog.FormattedMessage("Y               :%p|Fallout4.exe+0x%08X", pir.Y, (uintptr_t)pir.Y - pir.FO4BaseAddr);
 	pir.debuglog.FormattedMessage("R               :%p|Fallout4.exe+0x%08X", pir.R, (uintptr_t)pir.R - pir.FO4BaseAddr);
-	pir.debuglog.FormattedMessage("RC              :%p|Fallout4.exe+0x%08X", pir.RC, (uintptr_t)pir.RC - pir.FO4BaseAddr);
+	//pir.debuglog.FormattedMessage("RC              :%p|Fallout4.exe+0x%08X", pir.RC, (uintptr_t)pir.RC - pir.FO4BaseAddr); never needed it i guess. unused
 	pir.debuglog.FormattedMessage("CORRECT         :%p|Fallout4.exe+0x%08X", pir.CORRECT, (uintptr_t)pir.CORRECT - pir.FO4BaseAddr);
 	pir.debuglog.FormattedMessage("CurrentWSRef    :%p|Fallout4.exe+0x%08X", CurrentWSRef.ptr, CurrentWSRef.r32);
 	pir.debuglog.FormattedMessage("FirstConsole    :%p|Fallout4.exe+0x%08X", FirstConsole.ptr, FirstConsole.r32);
@@ -1426,7 +1513,8 @@ static void InitPIR()
 	std::vector<std::future<void>> vec_futures;
 
 	vec_futures.emplace_back(FindPatternAsync(pir.R, "89 05 ? ? ? ? C6 05 ? ? ? ? 01 48 83 C4 68 C3"));
-	vec_futures.emplace_back(FindPatternAsync(pir.RC, "E8 ? ? ? ? 83 3D ? ? ? ? 00 0F 87 ? ? ? ? 48 8B 03 48 8B CB FF 90 ? ? ? ? 48"));
+	//vec_futures.emplace_back(FindPatternAsync(pir.RC, "E8 ? ? ? ? 83 3D ? ? ? ? 00 0F 87 ? ? ? ? 48 8B 03 48 8B CB FF 90 ? ? ? ? 48"));
+	//vec_futures.emplace_back(FindPatternAsync(pir.RC, "EE ? ? ? ? EE 3D ? ? ? ? 00 0F EE ? ? ? ? 48 8B 03 48 8B CB FF 90 ? ? ? ? 48"));
 	vec_futures.emplace_back(FindPatternAsync(Zoom.ptr, "F3 0F 10 0D ? ? ? ? 0F 29 74 24 20 F3 0F 10 35"));
 	vec_futures.emplace_back(FindPatternAsync(Rotate.ptr, "F3 0F 10 05 ? ? ? ? ? ? ? ? ? ? ? ? 84 C9 75 07 0F 57 05"));
 	vec_futures.emplace_back(FindPatternAsync(CurrentWSRef.ptr, "48 8B 1D ? ? ? ? 4C 8D 24 C3 49 3B DC 0F 84 ? ? ? ? 66"));
@@ -1472,7 +1560,7 @@ static void InitPIR()
 	if (pir.C) { ReadMemory((uintptr_t(pir.C)), &pir.C_OLD, 0x07); }
 	if (pir.D) { ReadMemory((uintptr_t(pir.D)), &pir.D_OLD, 0x07); }
 	if (pir.F) { ReadMemory((uintptr_t(pir.F)), &pir.F_OLD, 0x06); }
-	if (pir.RC) { ReadMemory((uintptr_t(pir.RC)), &pir.RC_OLD, 0x05); }
+	//if (pir.RC) { ReadMemory((uintptr_t(pir.RC)), &pir.RC_OLD, 0x05); }
 	if (pir.osnap) { ReadMemory((uintptr_t(pir.osnap)), &pir.OSNAP_OLD, 0x08); }
 
 	//wssize
@@ -1627,6 +1715,7 @@ extern "C" {
 		// plugin loaded
 		pir.end_tickcount = GetTickCount64() - pir.start_tickcount;
 		pirlog("finished in %llums.", pir.end_tickcount);
+		//pirlog("(%llums)", GetTickCount64() - pir.start_tickcount);
 		LogPatterns();
 
 		return true;
