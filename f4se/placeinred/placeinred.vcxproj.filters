@@ -9,4 +9,7 @@
   <ItemGroup>
     <None Include="exports.def" />
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="notes.txt" />
+  </ItemGroup>
 </Project>

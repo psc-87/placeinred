@@ -292,7 +292,6 @@ std::future<void> FindPatternAsync(T& ptr_address, const char(&pattern)[N])
 
 			if (match)
 			{
-				//pirlog("(%llums) Found [%s]", GetTickCount64() - pir.start_tickcount, pattern_str.c_str());
 				ptr_address = (T)match;
 			}
 		}
@@ -301,18 +300,31 @@ std::future<void> FindPatternAsync(T& ptr_address, const char(&pattern)[N])
 
 
 // return the ini path as a std string
+//static const std::string& GetPluginINIPath()
+//{
+//	static std::string s_configPath;
+//
+//	if (s_configPath.empty())
+//	{
+//		std::string	runtimePath = GetRuntimeDirectory();
+//		if (!runtimePath.empty())
+//		{
+//			s_configPath = runtimePath + pir.plugin_ini_path;
+//		}
+//	}
+//	return s_configPath;
+//}
+
+// google gemini helped
+// return the ini path as a std string
 static const std::string& GetPluginINIPath()
 {
-	static std::string s_configPath;
-
-	if (s_configPath.empty())
-	{
-		std::string	runtimePath = GetRuntimeDirectory();
-		if (!runtimePath.empty())
-		{
-			s_configPath = runtimePath + pir.plugin_ini_path;
-		}
-	}
+	static const std::string s_configPath = []() {
+		std::string runtimePath = GetRuntimeDirectory();
+		
+		// Explicitly log <empty> if the string has no characters		
+		return runtimePath.empty() ? "" : runtimePath + pir.plugin_ini_path;
+	}();
 	return s_configPath;
 }
 
@@ -399,7 +411,6 @@ static void LogPatterns()
 	pir.debuglog.FormattedMessage("J               :%p|Fallout4.exe+0x%08X", pir.J, (uintptr_t)pir.J - pir.FO4BaseAddr);
 	pir.debuglog.FormattedMessage("Y               :%p|Fallout4.exe+0x%08X", pir.Y, (uintptr_t)pir.Y - pir.FO4BaseAddr);
 	pir.debuglog.FormattedMessage("R               :%p|Fallout4.exe+0x%08X", pir.R, (uintptr_t)pir.R - pir.FO4BaseAddr);
-	//pir.debuglog.FormattedMessage("RC              :%p|Fallout4.exe+0x%08X", pir.RC, (uintptr_t)pir.RC - pir.FO4BaseAddr); never needed it i guess. unused
 	pir.debuglog.FormattedMessage("CORRECT         :%p|Fallout4.exe+0x%08X", pir.CORRECT, (uintptr_t)pir.CORRECT - pir.FO4BaseAddr);
 	pir.debuglog.FormattedMessage("CurrentWSRef    :%p|Fallout4.exe+0x%08X", CurrentWSRef.ptr, CurrentWSRef.r32);
 	pir.debuglog.FormattedMessage("FirstConsole    :%p|Fallout4.exe+0x%08X", FirstConsole.ptr, FirstConsole.r32);
@@ -1300,6 +1311,8 @@ static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thi
 
 			// console name ref toggle
 		case ConsoleSwitch("cnref"):   Toggle_ConsoleNameRef(); break;
+			// survival console toggle
+		case ConsoleSwitch("sc"): Toggle_SurvivalConsole(); break;
 
 			// show help
 		case ConsoleSwitch("?"):       PIR_ConsolePrint(pir.ConsoleHelpMSG); break;
@@ -1364,12 +1377,117 @@ static bool PatchConsole(const char* hijacked_cmd_fullname)
 }
 
 // read ini settings and toggle if needed
+//static void ReadINI()
+//{
+//	pirlog("Reading PlaceInRed.ini");
+//	const char* section = "Main";
+//
+//	// Helper lambda for toggle settings
+//	auto ApplyToggle = [&](const char* key, bool& currentFlag, auto toggleFunc, bool defaultEnabled)
+//		{
+//			std::string val = GetPluginINISettingAsString(section, key);
+//			bool wantEnabled = GetBoolFromINIString(val, defaultEnabled);
+//
+//			if (wantEnabled != currentFlag)
+//			{
+//				toggleFunc(); // flips the flag and applies patch
+//				pir.debuglog.FormattedMessage(" %s=%d (toggled)", key, wantEnabled);
+//			}
+//			else
+//			{
+//				pir.debuglog.FormattedMessage(" %s=%d (%s)", key, wantEnabled, val.empty() ? "hardcoded" : "unchanged");
+//			}
+//		};
+//
+//	// ------------------- Boolean toggles -------------------
+//	ApplyToggle("PLACEINRED_ENABLED", pir.PLACEINRED_ENABLED, Toggle_PlaceInRed, false);
+//	ApplyToggle("OBJECTSNAP_ENABLED", pir.OBJECTSNAP_ENABLED, Toggle_ObjectSnap, true);
+//	ApplyToggle("GROUNDSNAP_ENABLED", pir.GROUNDSNAP_ENABLED, Toggle_GroundSnap, true);
+//	ApplyToggle("WORKSHOPSIZE_ENABLED", pir.WORKSHOPSIZE_ENABLED, Toggle_WorkshopSize, false);
+//	ApplyToggle("OUTLINES_ENABLED", pir.OUTLINES_ENABLED, Toggle_Outlines, true);
+//	ApplyToggle("ACHIEVEMENTS_ENABLED", pir.ACHIEVEMENTS_ENABLED, Toggle_Achievements, false);
+//	ApplyToggle("ConsoleNameRef_ENABLED", pir.ConsoleNameRef_ENABLED, Toggle_ConsoleNameRef, false);
+//	ApplyToggle("bAllowConsoleInSurvival", pir.bAllowConsoleInSurvival, Toggle_SurvivalConsole, false);
+//
+//	// ------------------- PrintConsoleMessages -------------------
+//	{
+//		std::string val = GetPluginINISettingAsString(section, "PrintConsoleMessages");
+//		bool wantEnabled = GetBoolFromINIString(val, true);
+//
+//		if (wantEnabled != pir.PrintConsoleMessages)
+//		{
+//			pir.PrintConsoleMessages = wantEnabled;
+//			pir.debuglog.FormattedMessage(" PrintConsoleMessages=%d (toggled)", wantEnabled);
+//		}
+//		else
+//		{
+//			pir.debuglog.FormattedMessage(" PrintConsoleMessages=%d (%s)", wantEnabled, val.empty() ? "hardcoded" : "unchanged");
+//		}
+//	}
+//
+//	// ------------------- Slow mode parameters -------------------
+//	{
+//		std::string rotStr = GetPluginINISettingAsString(section, "fSlowerROTATE");
+//		if (!rotStr.empty())
+//		{
+//			float f = FloatFromString(rotStr, 0.01f, 50.0f, 0.0f);
+//			pir.fSlowerROTATE = (f > 0.0f) ? f : 0.5000f;
+//		}
+//		pir.debuglog.FormattedMessage(" fSlowerROTATE=%.4f (%s)", pir.fSlowerROTATE, rotStr.empty() ? "hardcoded" : "ini");
+//
+//		std::string zoomStr = GetPluginINISettingAsString(section, "fSlowerZOOM");
+//		if (!zoomStr.empty())
+//		{
+//			float f = FloatFromString(zoomStr, 0.01f, 50.0f, 0.0f);
+//			pir.fSlowerZOOM = (f > 0.0f) ? f : 1.0000f;
+//		}
+//		pir.debuglog.FormattedMessage(" fSlowerZOOM=%.4f (%s)", pir.fSlowerZOOM, zoomStr.empty() ? "hardcoded" : "ini");
+//
+//		std::string val = GetPluginINISettingAsString(section, "SLOW_ENABLED");
+//		bool wantSlow = GetBoolFromINIString(val, false);
+//
+//		if (wantSlow != pir.SLOW_ENABLED)
+//			Toggle_SlowZoomAndRotate();
+//
+//		pir.debuglog.FormattedMessage(" SLOW_ENABLED=%d (%s)", wantSlow, val.empty() ? "hardcoded" : (wantSlow != pir.SLOW_ENABLED ? "toggled" : "unchanged"));
+//	}
+//
+//	// ------------------- Custom rotate degrees -------------------
+//	{
+//		std::string xStr = GetPluginINISettingAsString(section, "fRotateDegreesCustomX");
+//		if (!xStr.empty())
+//		{
+//			float f = FloatFromString(xStr, 0.001f, 360.000f, 3.6000f);
+//			pir.fRotateDegreesCustomX = (f > 0.0f) ? f : 3.6000f;
+//		}
+//		pir.debuglog.FormattedMessage(" fRotateDegreesCustomX=%.4f (%s)", pir.fRotateDegreesCustomX, xStr.empty() ? "hardcoded" : "ini");
+//
+//		std::string yStr = GetPluginINISettingAsString(section, "fRotateDegreesCustomY");
+//		if (!yStr.empty())
+//		{
+//			float f = FloatFromString(yStr, 0.001f, 360.000f, 3.6000f);
+//			pir.fRotateDegreesCustomY = (f > 0.0f) ? f : 3.6000f;
+//		}
+//		pir.debuglog.FormattedMessage(" fRotateDegreesCustomY=%.4f (%s)", pir.fRotateDegreesCustomY, yStr.empty() ? "hardcoded" : "ini");
+//
+//		std::string zStr = GetPluginINISettingAsString(section, "fRotateDegreesCustomZ");
+//		if (!zStr.empty())
+//		{
+//			float f = FloatFromString(zStr, 0.001f, 360.000f, 3.6000f);
+//			pir.fRotateDegreesCustomZ = (f > 0.0f) ? f : 3.6000f;
+//		}
+//		pir.debuglog.FormattedMessage(" fRotateDegreesCustomZ=%.4f (%s)", pir.fRotateDegreesCustomZ, zStr.empty() ? "hardcoded" : "ini");
+//	}
+//
+//	pirlog("Finished reading INI.");
+//}
+
 static void ReadINI()
 {
 	pirlog("Reading PlaceInRed.ini");
 	const char* section = "Main";
 
-	// Helper lambda for toggle settings
+	// 1. Lambda for standard bool toggles
 	auto ApplyToggle = [&](const char* key, bool& currentFlag, auto toggleFunc, bool defaultEnabled)
 		{
 			std::string val = GetPluginINISettingAsString(section, key);
@@ -1377,16 +1495,28 @@ static void ReadINI()
 
 			if (wantEnabled != currentFlag)
 			{
-				toggleFunc(); // flips the flag and applies patch
-				pir.debuglog.FormattedMessage(" %s=%d (toggled)", key, wantEnabled);
+				toggleFunc();
+				pirlog("%s=%d (toggled)", key, wantEnabled);
 			}
 			else
 			{
-				pir.debuglog.FormattedMessage(" %s=%d (%s)", key, wantEnabled, val.empty() ? "hardcoded" : "unchanged");
+				pirlog("%s=%d (%s)", key, wantEnabled, val.empty() ? "hardcoded" : "unchanged");
 			}
 		};
 
-	// ------------------- Boolean toggles -------------------
+	// 2. Lambda for float settings
+	auto ApplyFloat = [&](const char* key, float& target, float minVal, float maxVal, float defVal)
+		{
+			std::string str = GetPluginINISettingAsString(section, key);
+			if (!str.empty())
+			{
+				float f = FloatFromString(str, minVal, maxVal, 0.0f);
+				target = (f > 0.0f) ? f : defVal;
+			}
+			pirlog("%s=%.4f (%s)", key, target, str.empty() ? "hardcoded" : "ini");
+		};
+
+	// ------------------- Boolean Toggles -------------------
 	ApplyToggle("PLACEINRED_ENABLED", pir.PLACEINRED_ENABLED, Toggle_PlaceInRed, false);
 	ApplyToggle("OBJECTSNAP_ENABLED", pir.OBJECTSNAP_ENABLED, Toggle_ObjectSnap, true);
 	ApplyToggle("GROUNDSNAP_ENABLED", pir.GROUNDSNAP_ENABLED, Toggle_GroundSnap, true);
@@ -1396,75 +1526,18 @@ static void ReadINI()
 	ApplyToggle("ConsoleNameRef_ENABLED", pir.ConsoleNameRef_ENABLED, Toggle_ConsoleNameRef, false);
 	ApplyToggle("bAllowConsoleInSurvival", pir.bAllowConsoleInSurvival, Toggle_SurvivalConsole, false);
 
-	// ------------------- PrintConsoleMessages -------------------
-	{
-		std::string val = GetPluginINISettingAsString(section, "PrintConsoleMessages");
-		bool wantEnabled = GetBoolFromINIString(val, true);
+	// PrintConsoleMessages (Pure variable flip)
+	ApplyToggle("PrintConsoleMessages", pir.PrintConsoleMessages, [&]() { pir.PrintConsoleMessages = !pir.PrintConsoleMessages; }, true);
 
-		if (wantEnabled != pir.PrintConsoleMessages)
-		{
-			pir.PrintConsoleMessages = wantEnabled;
-			pir.debuglog.FormattedMessage(" PrintConsoleMessages=%d (toggled)", wantEnabled);
-		}
-		else
-		{
-			pir.debuglog.FormattedMessage(" PrintConsoleMessages=%d (%s)", wantEnabled, val.empty() ? "hardcoded" : "unchanged");
-		}
-	}
+	// ------------------- Slow Mode -------------------
+	ApplyFloat("fSlowerROTATE", pir.fSlowerROTATE, 0.01f, 50.0f, 0.5000f);
+	ApplyFloat("fSlowerZOOM", pir.fSlowerZOOM, 0.01f, 50.0f, 1.0000f);
+	ApplyToggle("SLOW_ENABLED", pir.SLOW_ENABLED, Toggle_SlowZoomAndRotate, false);
 
-	// ------------------- Slow mode parameters -------------------
-	{
-		std::string rotStr = GetPluginINISettingAsString(section, "fSlowerROTATE");
-		if (!rotStr.empty())
-		{
-			float f = FloatFromString(rotStr, 0.01f, 50.0f, 0.0f);
-			pir.fSlowerROTATE = (f > 0.0f) ? f : 0.5000f;
-		}
-		pir.debuglog.FormattedMessage(" fSlowerROTATE=%.4f (%s)", pir.fSlowerROTATE, rotStr.empty() ? "hardcoded" : "ini");
-
-		std::string zoomStr = GetPluginINISettingAsString(section, "fSlowerZOOM");
-		if (!zoomStr.empty())
-		{
-			float f = FloatFromString(zoomStr, 0.01f, 50.0f, 0.0f);
-			pir.fSlowerZOOM = (f > 0.0f) ? f : 1.0000f;
-		}
-		pir.debuglog.FormattedMessage(" fSlowerZOOM=%.4f (%s)", pir.fSlowerZOOM, zoomStr.empty() ? "hardcoded" : "ini");
-
-		std::string val = GetPluginINISettingAsString(section, "SLOW_ENABLED");
-		bool wantSlow = GetBoolFromINIString(val, false);
-
-		if (wantSlow != pir.SLOW_ENABLED)
-			Toggle_SlowZoomAndRotate();
-
-		pir.debuglog.FormattedMessage(" SLOW_ENABLED=%d (%s)", wantSlow, val.empty() ? "hardcoded" : (wantSlow != pir.SLOW_ENABLED ? "toggled" : "unchanged"));
-	}
-
-	// ------------------- Custom rotate degrees -------------------
-	{
-		std::string xStr = GetPluginINISettingAsString(section, "fRotateDegreesCustomX");
-		if (!xStr.empty())
-		{
-			float f = FloatFromString(xStr, 0.001f, 360.000f, 3.6000f);
-			pir.fRotateDegreesCustomX = (f > 0.0f) ? f : 3.6000f;
-		}
-		pir.debuglog.FormattedMessage(" fRotateDegreesCustomX=%.4f (%s)", pir.fRotateDegreesCustomX, xStr.empty() ? "hardcoded" : "ini");
-
-		std::string yStr = GetPluginINISettingAsString(section, "fRotateDegreesCustomY");
-		if (!yStr.empty())
-		{
-			float f = FloatFromString(yStr, 0.001f, 360.000f, 3.6000f);
-			pir.fRotateDegreesCustomY = (f > 0.0f) ? f : 3.6000f;
-		}
-		pir.debuglog.FormattedMessage(" fRotateDegreesCustomY=%.4f (%s)", pir.fRotateDegreesCustomY, yStr.empty() ? "hardcoded" : "ini");
-
-		std::string zStr = GetPluginINISettingAsString(section, "fRotateDegreesCustomZ");
-		if (!zStr.empty())
-		{
-			float f = FloatFromString(zStr, 0.001f, 360.000f, 3.6000f);
-			pir.fRotateDegreesCustomZ = (f > 0.0f) ? f : 3.6000f;
-		}
-		pir.debuglog.FormattedMessage(" fRotateDegreesCustomZ=%.4f (%s)", pir.fRotateDegreesCustomZ, zStr.empty() ? "hardcoded" : "ini");
-	}
+	// ------------------- Custom Rotation -------------------
+	ApplyFloat("fRotateDegreesCustomX", pir.fRotateDegreesCustomX, 0.001f, 360.0f, 3.6000f);
+	ApplyFloat("fRotateDegreesCustomY", pir.fRotateDegreesCustomY, 0.001f, 360.0f, 3.6000f);
+	ApplyFloat("fRotateDegreesCustomZ", pir.fRotateDegreesCustomZ, 0.001f, 360.0f, 3.6000f);
 
 	pirlog("Finished reading INI.");
 }
@@ -1513,8 +1586,6 @@ static void InitPIR()
 	std::vector<std::future<void>> vec_futures;
 
 	vec_futures.emplace_back(FindPatternAsync(pir.R, "89 05 ? ? ? ? C6 05 ? ? ? ? 01 48 83 C4 68 C3"));
-	//vec_futures.emplace_back(FindPatternAsync(pir.RC, "E8 ? ? ? ? 83 3D ? ? ? ? 00 0F 87 ? ? ? ? 48 8B 03 48 8B CB FF 90 ? ? ? ? 48"));
-	//vec_futures.emplace_back(FindPatternAsync(pir.RC, "EE ? ? ? ? EE 3D ? ? ? ? 00 0F EE ? ? ? ? 48 8B 03 48 8B CB FF 90 ? ? ? ? 48"));
 	vec_futures.emplace_back(FindPatternAsync(Zoom.ptr, "F3 0F 10 0D ? ? ? ? 0F 29 74 24 20 F3 0F 10 35"));
 	vec_futures.emplace_back(FindPatternAsync(Rotate.ptr, "F3 0F 10 05 ? ? ? ? ? ? ? ? ? ? ? ? 84 C9 75 07 0F 57 05"));
 	vec_futures.emplace_back(FindPatternAsync(CurrentWSRef.ptr, "48 8B 1D ? ? ? ? 4C 8D 24 C3 49 3B DC 0F 84 ? ? ? ? 66"));
@@ -1555,12 +1626,12 @@ static void InitPIR()
 	for (auto& future : vec_futures) {
 		future.get();
 	}
+	pirlog("Storing old bytes.");
 
 	// store old bytes
 	if (pir.C) { ReadMemory((uintptr_t(pir.C)), &pir.C_OLD, 0x07); }
 	if (pir.D) { ReadMemory((uintptr_t(pir.D)), &pir.D_OLD, 0x07); }
 	if (pir.F) { ReadMemory((uintptr_t(pir.F)), &pir.F_OLD, 0x06); }
-	//if (pir.RC) { ReadMemory((uintptr_t(pir.RC)), &pir.RC_OLD, 0x05); }
 	if (pir.osnap) { ReadMemory((uintptr_t(pir.osnap)), &pir.OSNAP_OLD, 0x08); }
 
 	//wssize
@@ -1699,7 +1770,7 @@ extern "C" {
 		// did we find all the patterns?
 		if (!FoundPatterns())
 		{
-			pirlog("plugin load failed after %llums! Couldn't find required patterns in memory!", pir.end_tickcount);
+			pirlog("plugin load failed! Couldn't find required patterns in memory!");
 			LogPatterns();
 			return false;
 		}
@@ -1713,9 +1784,7 @@ extern "C" {
 		ReadINI();
 
 		// plugin loaded
-		pir.end_tickcount = GetTickCount64() - pir.start_tickcount;
-		pirlog("finished in %llums.", pir.end_tickcount);
-		//pirlog("(%llums)", GetTickCount64() - pir.start_tickcount);
+		pirlog("Plugin initialized!");
 		LogPatterns();
 
 		return true;

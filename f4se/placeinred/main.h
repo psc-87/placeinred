@@ -4,18 +4,20 @@
 // =========================================================================================
 // INCLUDES
 // =========================================================================================
-#include <cmath>
-#include <vector>
-#include <future>
+#include "shlobj.h"
+
 #include <array>
+#include <charconv>
+#include <chrono>
+#include <cmath>
+#include <cstdarg>
+#include <cstdint>
+#include <cstring>
+#include <future>
+#include <span>
 #include <string>
 #include <string_view>
-#include <span>
-#include <charconv>
-#include <cstring>
-#include <cstdint>
-
-#include "shlobj.h"
+#include <vector>
 
 // F4SE Common
 #include "f4se_common/BranchTrampoline.h"
@@ -36,23 +38,6 @@
 #include "f4se/GameMenus.h"
 #include "f4se/ScaleformLoader.h"
 
-
-// =========================================================================================
-// LOGGING & MACROS
-// =========================================================================================
-
-// Thread-local function name storage for logging context
-static thread_local const char* g_pir_func = nullptr;
-
-// Macro: Logs formatted messages with function name context
-// Note: Requires an instance of PlaceInRed named 'pir' to be visible in scope
-#define pirlog(fmt, ...) \
-    do { \
-        const char* _func = g_pir_func ? g_pir_func : __func__; \
-        char _pirbuf[2048]; \
-        _snprintf_s(_pirbuf, sizeof(_pirbuf), _TRUNCATE, "[%s] " fmt, _func, ##__VA_ARGS__); \
-        pir.debuglog.FormattedMessage(_pirbuf); \
-    } while (0)
 
 // =========================================================================================
 // TYPE ALIASES (FUNCTION POINTERS)
@@ -99,6 +84,46 @@ public:
         : FO4BaseAddr(reinterpret_cast<uintptr_t>(GetModuleHandleA(nullptr)))
     {
     }
+
+    void Log(const char* callerFunc, const char* fmt, ...)
+    {
+        // 1. Thread-safe cache of the last "real" function
+        static thread_local const char* s_enclosingFunc = "PlaceInRed";
+
+        // 2. If C++ hands us an anonymous lambda operator, throw it away and use the cache
+        if (strcmp(callerFunc, "operator ()") != 0 && strcmp(callerFunc, "operator()") != 0)
+        {
+            s_enclosingFunc = callerFunc;
+        }
+        else
+        {
+            callerFunc = s_enclosingFunc;
+        }
+        static const auto s_bootTime = std::chrono::steady_clock::now();
+        const auto now = std::chrono::steady_clock::now();
+
+        // 1. Get total milliseconds elapsed since DLL boot
+        const auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - s_bootTime).count();
+
+        const auto ms = totalMs % 1000;
+        const auto s = (totalMs / 1000) % 60;
+        const auto m = (totalMs / 60000) % 60;
+        const auto h = (totalMs / 3600000);
+
+        char userMsg[1024];
+        va_list args;
+        va_start(args, fmt);
+        _vsnprintf_s(userMsg, sizeof(userMsg), _TRUNCATE, fmt, args);
+        va_end(args);
+
+        char finalBuf[2048];
+        _snprintf_s(finalBuf, sizeof(finalBuf), _TRUNCATE,
+            "[%02lld:%02lld:%02lld.%03lld] [%s] %s",
+            h, m, s, ms, callerFunc, userMsg);
+
+        debuglog.FormattedMessage(finalBuf);
+    }
+
 
     uintptr_t FO4BaseAddr = 0;
     uintptr_t GetFO4BaseAddress() const { return FO4BaseAddr; }
@@ -299,19 +324,5 @@ private:
 
 
 
-
-
-
-
-
-
-
-/* helpful notes
-  interesting bytes starting at bWSMode (Fallout4.exe+2E74994)
-
-example               01      00        ??   00  00        ??     00      ?? ??    01  01       01
-label                 bwsmode holdingE       zerochecks           exitws           onechecks    something grabbed
-
-Fallout4.exe+2E749??  94      95        96   97  98        99     9A      9B 9C    9D  9E       0x9F
-bwsmode offset        +0      +1        +2   +3  +4        +5     +6      +7 +8    +9  +A       +B
-*/
+extern PlaceInRed pir;
+#define pirlog(...) pir.Log(__func__, __VA_ARGS__)
