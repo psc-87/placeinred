@@ -32,11 +32,10 @@
 #include "f4se/GameForms.h"
 #include "f4se/GameObjects.h"
 #include "f4se/GameReferences.h"
+#include "f4se/NiTypes.h"
 #include "f4se/ObScript.h"
 #include "f4se/PapyrusVM.h"
 #include "f4se/PluginAPI.h"
-#include "f4se/GameMenus.h"
-#include "f4se/ScaleformLoader.h"
 
 
 // =========================================================================================
@@ -124,25 +123,19 @@ public:
         debuglog.FormattedMessage(finalBuf);
     }
 
-
+	// base address set when the DLL is loaded, used for calculating offsets
     uintptr_t FO4BaseAddr = 0;
     uintptr_t GetFO4BaseAddress() const { return FO4BaseAddr; }
-
-    // -------------------------------------------------------------------------------------
-    // Performance Tracking
-    // -------------------------------------------------------------------------------------
-    UInt64 start_tickcount = GetTickCount64();
-    UInt64 end_tickcount = 0;
 
     // -------------------------------------------------------------------------------------
     // F4SE Interfaces & Handles
     // -------------------------------------------------------------------------------------
     IDebugLog               debuglog;
     PluginHandle            pluginHandle = kPluginHandle_Invalid;
-    F4SEPapyrusInterface*   g_papyrus = nullptr;
+    //F4SEPapyrusInterface*   g_papyrus = nullptr;
     F4SEMessagingInterface* g_messaging = nullptr;
     F4SEObjectInterface*    g_object = nullptr;
-    F4SETaskInterface*      g_task = nullptr;
+    //F4SETaskInterface*      g_task = nullptr;
 
     const char* plugin_log_file = "\\My Games\\Fallout4\\F4SE\\PlaceInRed.log";
     std::string plugin_ini_path = "Data\\F4SE\\Plugins\\PlaceInRed.ini";
@@ -189,7 +182,6 @@ public:
     uintptr_t* H = nullptr;
     uintptr_t* J = nullptr;
     uintptr_t* R = nullptr;
-    uintptr_t* RC = nullptr;
     uintptr_t* Y = nullptr;
     uintptr_t* CORRECT = nullptr;
     uintptr_t* wstimer = nullptr;
@@ -197,7 +189,6 @@ public:
     uintptr_t* osnap = nullptr;
     uintptr_t* outlines = nullptr;
     uintptr_t* achievements = nullptr;
-    uintptr_t* moveworkbench = nullptr;
     uintptr_t* survivalconsole = nullptr;
 
     // -------------------------------------------------------------------------------------

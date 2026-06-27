@@ -1,5 +1,6 @@
 #include "main.h"
 
+
 UInt32 pluginVersion = 16;
 static PlaceInRed pir;
 
@@ -108,18 +109,6 @@ static SInt32 GetRel32FromPattern(uintptr_t instr, UInt64 start, UInt64 end, UIn
 	return (SInt32)(((instr + end) + rel - pir.FO4BaseAddr) + shift);
 }
 
-// read the address at an address+offset
-static uintptr_t GetSinglePointer(uintptr_t address, UInt32 offset)
-{
-	uintptr_t result = 0;
-	if (ReadMemory(address + offset, &result, sizeof(uintptr_t))) {
-		return result;
-	}
-	else {
-		return 0;
-	}
-}
-
 // follow multiple pointers with offsets to get final address
 static uintptr_t GimmeMultiPointer(uintptr_t baseAddress, UInt32* offsets, UInt32 numOffsets)
 {
@@ -134,79 +123,6 @@ static uintptr_t GimmeMultiPointer(uintptr_t baseAddress, UInt32* offsets, UInt3
 	}
 	return address;
 }
-
-/**
- * @brief Asynchronously scans memory for a specific byte pattern.
- *
- * @param ptr_address Reference to the output variable. Will be set to the matched
- * address, or 0 if the pattern is not found or the scan faults.
- * @param pattern     The byte pattern string literal to search for.
- * @return            A std::future<void> representing the asynchronous task execution.
- *
- * @note Lifetime Safety: The Utility::pattern is constructed synchronously before
- * launching the thread. The lambda then captures this owned copy by value,
- * preventing undefined behavior from dangling string references.
- *
- * @note Memory Safety: The internal scan is guarded by Structured Exception Handling
- * (__try / __except) to gracefully catch access violations (e.g., reading past
- * page boundaries or into unmapped memory) without crashing the process.
- */
-//template <typename T, size_t N>
-//std::future<void> FindPatternAsync(T& ptr_address, const char(&pattern)[N])
-//{
-//	Utility::pattern pat(pattern); // owned copy, lifetime-safe
-//
-//	return std::async(std::launch::async,
-//		[&ptr_address, pat]() mutable
-//		{
-//			// Default: not found
-//			ptr_address = 0;
-//
-//			// The scan itself can fault (end-of-code reads, SSE loads),
-//			// so guard only the scan step.
-//			__try
-//			{
-//				pat.count(1);
-//			}
-//			__except (EXCEPTION_EXECUTE_HANDLER)
-//			{
-//				return;
-//			}
-//
-//			// Safe: returns nullptr if no matches
-//			auto match = pat.get(0).get<uintptr_t>();
-//			if (match)
-//				pirlog("(%llums)", GetTickCount64() - pir.start_tickcount);
-//				ptr_address = (T)match;
-//		}
-//	);
-//}
-
-//template <typename T, size_t N>
-//std::future<void> FindPatternAsync(T& ptr_address, const char(&pattern)[N])
-//{
-//	Utility::pattern pat(pattern);
-//
-//	return std::async(std::launch::async,
-//		// 1. Capture by value into a fresh std::string
-//		[&ptr_address, pat, pattern_str = std::string(pattern)]() mutable
-//		{
-//			ptr_address = 0;
-//
-//			__try { pat.count(1); }
-//			__except (EXCEPTION_EXECUTE_HANDLER) { return; }
-//
-//			auto match = pat.get(0).get<uintptr_t>();
-//
-//			if (match)
-//			{
-//				// 2. Use .c_str() for your printf-style logger
-//				pirlog("(%llums) Found [%s]", GetTickCount64() - pir.start_tickcount, pattern_str.c_str());
-//				ptr_address = (T)match;
-//			}
-//		}
-//	);
-//}
 
 inline std::span<const uint8_t> GetFalloutCodeSection()
 {
@@ -687,30 +603,54 @@ static bool SetCurrentRefScale(float newScale)
 }
 
 //Move reference to itself
+//static void MoveRefToSelf(int repeat = 0)
+//{
+//	TESObjectREFR* ref = GetCurrentWSRef();
+//	if (ref) {
+//		UInt32 nullHandle = *g_invalidRefHandle;
+//		TESObjectCELL* parentCell = ref->parentCell;
+//		TESWorldSpace* worldspace = CALL_MEMBER_FN(ref, GetWorldspace)();
+//
+//		// new position
+//		NiPoint3 newPos;
+//		newPos.x = ref->pos.x;
+//		newPos.y = ref->pos.y;
+//		newPos.z = ref->pos.z;
+//		// new rotation
+//		NiPoint3 newRot;
+//		newRot.x = ref->rot.x;
+//		newRot.y = ref->rot.y;
+//		newRot.z = ref->rot.z;
+//
+//		for (int i = 0; i <= repeat; i++)
+//		{
+//			MoveRefrToPosition(ref, &nullHandle, parentCell, worldspace, &ref->pos, &ref->rot);
+//		}
+//
+//	}
+//}
+
+// Move reference to itself and optionally repeat the operation to reduce jitter.
+// This is useful when scaling or rotating a reference, as it forces the game to re-evaluate the reference's position and rotation in the world
+// which can help eliminate visual artifacts or "jitter" that may occur after transformations.
 static void MoveRefToSelf(int repeat = 0)
 {
 	TESObjectREFR* ref = GetCurrentWSRef();
-	if (ref) {
+	if (!ref) return;
+
+	TESObjectCELL* parentCell = ref->parentCell;
+	TESWorldSpace* worldspace = CALL_MEMBER_FN(ref, GetWorldspace)();
+
+	// 1. Frozen stack copy (Standard POD copy replaces 6 lines of manual .x/.y/.z assignment)
+	NiPoint3 staticPos = ref->pos;
+	NiPoint3 staticRot = ref->rot;
+
+	for (int i = 0; i <= repeat; i++)
+	{
+		// 2. MUST be inside the loop: MoveRefrToPosition mutates target handles!
 		UInt32 nullHandle = *g_invalidRefHandle;
-		TESObjectCELL* parentCell = ref->parentCell;
-		TESWorldSpace* worldspace = CALL_MEMBER_FN(ref, GetWorldspace)();
 
-		// new position
-		NiPoint3 newPos;
-		newPos.x = ref->pos.x;
-		newPos.y = ref->pos.y;
-		newPos.z = ref->pos.z;
-		// new rotation
-		NiPoint3 newRot;
-		newRot.x = ref->rot.x;
-		newRot.y = ref->rot.y;
-		newRot.z = ref->rot.z;
-
-		for (int i = 0; i <= repeat; i++)
-		{
-			MoveRefrToPosition(ref, &nullHandle, parentCell, worldspace, &ref->pos, &ref->rot);
-		}
-
+		MoveRefrToPosition(ref, &nullHandle, parentCell, worldspace, &staticPos, &staticRot);
 	}
 }
 
@@ -1052,8 +992,9 @@ static bool ToggleWorkbenchMove()
 {
 	if (WorkbenchSelection.ptr && WorkbenchSelection.addr) {
 
-		// game checks ref type and does vtable lookup at +5
-		// Workbench is type 0x1F. (0x1F - 0x1A = 0x05)
+		// player moves mouse over workbench
+		// game checks ref type, does vtable lookup at +0x05 because the Workbench is type 0x1F. (0x1F - 0x1A = 0x05)
+		// 
 		//  Fallout4.exe+30B86A - 0FB6 C0 - movzx eax,al
 		//  Fallout4.exe + 30B86D - 83 C0 E6 - add eax, -1A { 230 }
 		//  Fallout4.exe + 30B870 - 83 F8 75 - cmp eax, 75 { 117 }
