@@ -198,11 +198,11 @@ inline uintptr_t PatternScan(std::span<const uint8_t> memory, std::string_view s
 template <typename T, size_t N>
 std::future<void> FindPatternAsync(T& ptr_address, const char(&pattern)[N])
 {
-	return std::async(std::launch::async,
+	// Changed launch::async -> launch::async | launch::deferred
+	return std::async(std::launch::async | std::launch::deferred,
 		[&ptr_address, pattern_str = std::string(pattern)]() mutable
 		{
 			ptr_address = 0;
-
 			std::span<const uint8_t> mem = GetFalloutCodeSection();
 			uintptr_t match = PatternScan(mem, pattern_str);
 
@@ -213,6 +213,7 @@ std::future<void> FindPatternAsync(T& ptr_address, const char(&pattern)[N])
 		}
 	);
 }
+
 
 
 // return the ini path as a std string
@@ -353,28 +354,56 @@ static void LogPatterns()
 
 
 // return the currently selected workshop ref with some safety checks
-static TESObjectREFR* GetCurrentWSRef(bool bOnlySelectReferences=1)
+//static TESObjectREFR* GetCurrentWSRef(bool bOnlySelectReferences=1)
+//{
+//	if (CurrentWSRef.ptr && CurrentWSRef.addr && IsPlayerInWorkshopMode()) {
+//
+//		uintptr_t refaddr = GimmeMultiPointer(CurrentWSRef.addr, pir.CurrentWSRef_Offsets, pir.CurrentWSRef_OffsetsSize);
+//		TESObjectREFR* ref = (TESObjectREFR*)refaddr;
+//
+//		if (ref)
+//		{
+//			if (!ref->formID) { return nullptr; }
+//			if (ref->formID <= 0) { return nullptr; }
+//
+//			//optional but checks by default
+//			if (bOnlySelectReferences) {
+//				if (ref->formType != 0x40) {
+//					return nullptr;
+//				}
+//			}
+//			return ref;
+//		}
+//	}
+//	return nullptr;
+//}
+
+static TESObjectREFR* GetCurrentWSRef(bool bOnlySelectReferences = true)
 {
-	if (CurrentWSRef.ptr && CurrentWSRef.addr && IsPlayerInWorkshopMode()) {
+	if (!CurrentWSRef.ptr || !CurrentWSRef.addr || !IsPlayerInWorkshopMode())
+		return nullptr;
 
-		uintptr_t refaddr = GimmeMultiPointer(CurrentWSRef.addr, pir.CurrentWSRef_Offsets, pir.CurrentWSRef_OffsetsSize);
-		TESObjectREFR* ref = (TESObjectREFR*)refaddr;
+	uintptr_t refaddr = GimmeMultiPointer(CurrentWSRef.addr, pir.CurrentWSRef_Offsets, pir.CurrentWSRef_OffsetsSize);
+	if (!refaddr)
+		return nullptr;
 
-		if (ref)
-		{
-			if (!ref->formID) { return nullptr; }
-			if (ref->formID <= 0) { return nullptr; }
+	TESObjectREFR* ref = reinterpret_cast<TESObjectREFR*>(refaddr);
 
-			//optional but checks by default
-			if (bOnlySelectReferences) {
-				if (ref->formType != 0x40) {
-					return nullptr;
-				}
-			}
-			return ref;
-		}
+	__try
+	{
+		// Native member lookup safely catches bad pointers / unmapped memory pages
+		if (!ref->formID || ref->formID == 0)
+			return nullptr;
+
+		if (bOnlySelectReferences && ref->formType != 0x40)
+			return nullptr;
 	}
-	return nullptr;
+	__except (EXCEPTION_EXECUTE_HANDLER)
+	{
+		return nullptr;
+	}
+
+	return ref;
 }
 
 
@@ -509,20 +538,38 @@ static void LogWSRef()
 }
 
 // lock the current WS ref in place by changing the motion type to keyframed
-static void LockUnlockWSRef(bool unlock = 0, bool sound = 0)
+//static void LockUnlockWSRef(bool unlock = 0, bool sound = 0)
+//{
+//	VirtualMachine* vm = (*g_gameVM)->m_virtualMachine;
+//	TESObjectREFR* ref = GetCurrentWSRef();
+//	UInt32 motion = 00000002; //Motion_Keyframed aka locked in place
+//	bool acti = false; //akAllowActivate
+//
+//	if (unlock == 1) {
+//		motion = 00000001; //Motion_Dynamic unlock and release to havok
+//	}
+//
+//	if (vm && ref) {
+//		SetMotionType_native(vm, NULL, ref, motion, acti);
+//		if (sound == 1) {
+//			pir.PlaySound_UI_func(pir.sLockObjectSound);
+//		}
+//	}
+//}
+
+static void LockUnlockWSRef(bool unlock = false, bool sound = false)
 {
 	VirtualMachine* vm = (*g_gameVM)->m_virtualMachine;
 	TESObjectREFR* ref = GetCurrentWSRef();
-	UInt32 motion = 00000002; //Motion_Keyframed aka locked in place
-	bool acti = false; //akAllowActivate
+	UInt32 motion = 2; // Motion_Keyframed
 
-	if (unlock == 1) {
-		motion = 00000001; //Motion_Dynamic unlock and release to havok
+	if (unlock) {
+		motion = 1; // Motion_Dynamic
 	}
 
 	if (vm && ref) {
-		SetMotionType_native(vm, NULL, ref, motion, acti);
-		if (sound == 1) {
+		SetMotionType_native(vm, NULL, ref, motion, false);
+		if (sound) {
 			pir.PlaySound_UI_func(pir.sLockObjectSound);
 		}
 	}
@@ -988,25 +1035,15 @@ static bool Toggle_ConsoleNameRef()
 }
 
 // toggle moving the workbench by modifying vtable lookup bit for workbench type
-static bool ToggleWorkbenchMove()
+static bool Toggle_WorkbenchMove()
 {
 	if (WorkbenchSelection.ptr && WorkbenchSelection.addr) {
 
-		// player moves mouse over workbench
-		// game checks ref type, does vtable lookup at +0x05 because the Workbench is type 0x1F. (0x1F - 0x1A = 0x05)
-		// 
-		//  Fallout4.exe+30B86A - 0FB6 C0 - movzx eax,al
-		//  Fallout4.exe + 30B86D - 83 C0 E6 - add eax, -1A { 230 }
-		//  Fallout4.exe + 30B870 - 83 F8 75 - cmp eax, 75 { 117 }
-		//  Fallout4.exe + 30B873 - 77 23 - ja Fallout4.exe + 30B898
-		//  Fallout4.exe + 30B875 - 48 8D 15 8447CFFF - lea rdx, [Base] { (9460301) }
-		//  Fallout4.exe + 30B87C - 0FB6 84 02 A8B83000 - movzx eax, byte ptr[rdx + rax + 0030B8A8]
-		//  Fallout4.exe + 30B884 - 8B 8C 82 A0B83000 - mov ecx, [rdx + rax * 4 + 0030B8A0]
-		//  Fallout4.exe + 30B88E - FF E1 - jmp rcx
+		UInt8 AllowSelect1F = 0xFF; // 0xFF sentinel to indicate an error if we can't read the memory
+		if (!ReadMemory(uintptr_t(WorkbenchSelection.addr + 0x05), &AllowSelect1F, sizeof(UInt8))) {
+			return false;
+		}
 
-		UInt8 AllowSelect1F = 0x00; //00 in the vtable means we can select it
-		ReadMemory(uintptr_t(WorkbenchSelection.addr + 0x05), &AllowSelect1F, sizeof(UInt8)); //whats the current value
-		
 		// game default - disable selecting workbench
 		if (AllowSelect1F == 0x00) {
 			SafeWrite8((uintptr_t)WorkbenchSelection.addr + 0x05, 0x01);
@@ -1014,16 +1051,14 @@ static bool ToggleWorkbenchMove()
 			return true;
 		}
 
-		// allows selecting and stroring workbench (todo: select only)
+		// allows selecting and storing workbench
 		if (AllowSelect1F == 0x01) {
-			SafeWrite8((uintptr_t)WorkbenchSelection.addr + 0x05, 0x00); // allow selecting and storing workbench
+			SafeWrite8((uintptr_t)WorkbenchSelection.addr + 0x05, 0x00);
 			PIR_ConsolePrint("Workbench move allowed! Dont accidentally store it!");
 			return true;
 		}
 
-		// should always be 0 or 1
 		return false;
-
 	}
 	return false;
 }
@@ -1152,8 +1187,8 @@ static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thi
 		case ConsoleSwitch("outlines"):     Toggle_Outlines();           break;
 		case ConsoleSwitch("7"):            Toggle_Achievements();       break;
 		case ConsoleSwitch("achievements"): Toggle_Achievements();       break;
-		case ConsoleSwitch("8"):            ToggleWorkbenchMove();       break;
-		case ConsoleSwitch("wb"):           ToggleWorkbenchMove();       break;
+		case ConsoleSwitch("8"):            Toggle_WorkbenchMove();       break;
+		case ConsoleSwitch("wb"):           Toggle_WorkbenchMove();       break;
 
 			//scale constants
 		case ConsoleSwitch("scale1"):       SetCurrentRefScale(1.0000f);  break;
@@ -1316,112 +1351,6 @@ static bool PatchConsole(const char* hijacked_cmd_fullname)
 	}
 	return false;
 }
-
-// read ini settings and toggle if needed
-//static void ReadINI()
-//{
-//	pirlog("Reading PlaceInRed.ini");
-//	const char* section = "Main";
-//
-//	// Helper lambda for toggle settings
-//	auto ApplyToggle = [&](const char* key, bool& currentFlag, auto toggleFunc, bool defaultEnabled)
-//		{
-//			std::string val = GetPluginINISettingAsString(section, key);
-//			bool wantEnabled = GetBoolFromINIString(val, defaultEnabled);
-//
-//			if (wantEnabled != currentFlag)
-//			{
-//				toggleFunc(); // flips the flag and applies patch
-//				pir.debuglog.FormattedMessage(" %s=%d (toggled)", key, wantEnabled);
-//			}
-//			else
-//			{
-//				pir.debuglog.FormattedMessage(" %s=%d (%s)", key, wantEnabled, val.empty() ? "hardcoded" : "unchanged");
-//			}
-//		};
-//
-//	// ------------------- Boolean toggles -------------------
-//	ApplyToggle("PLACEINRED_ENABLED", pir.PLACEINRED_ENABLED, Toggle_PlaceInRed, false);
-//	ApplyToggle("OBJECTSNAP_ENABLED", pir.OBJECTSNAP_ENABLED, Toggle_ObjectSnap, true);
-//	ApplyToggle("GROUNDSNAP_ENABLED", pir.GROUNDSNAP_ENABLED, Toggle_GroundSnap, true);
-//	ApplyToggle("WORKSHOPSIZE_ENABLED", pir.WORKSHOPSIZE_ENABLED, Toggle_WorkshopSize, false);
-//	ApplyToggle("OUTLINES_ENABLED", pir.OUTLINES_ENABLED, Toggle_Outlines, true);
-//	ApplyToggle("ACHIEVEMENTS_ENABLED", pir.ACHIEVEMENTS_ENABLED, Toggle_Achievements, false);
-//	ApplyToggle("ConsoleNameRef_ENABLED", pir.ConsoleNameRef_ENABLED, Toggle_ConsoleNameRef, false);
-//	ApplyToggle("bAllowConsoleInSurvival", pir.bAllowConsoleInSurvival, Toggle_SurvivalConsole, false);
-//
-//	// ------------------- PrintConsoleMessages -------------------
-//	{
-//		std::string val = GetPluginINISettingAsString(section, "PrintConsoleMessages");
-//		bool wantEnabled = GetBoolFromINIString(val, true);
-//
-//		if (wantEnabled != pir.PrintConsoleMessages)
-//		{
-//			pir.PrintConsoleMessages = wantEnabled;
-//			pir.debuglog.FormattedMessage(" PrintConsoleMessages=%d (toggled)", wantEnabled);
-//		}
-//		else
-//		{
-//			pir.debuglog.FormattedMessage(" PrintConsoleMessages=%d (%s)", wantEnabled, val.empty() ? "hardcoded" : "unchanged");
-//		}
-//	}
-//
-//	// ------------------- Slow mode parameters -------------------
-//	{
-//		std::string rotStr = GetPluginINISettingAsString(section, "fSlowerROTATE");
-//		if (!rotStr.empty())
-//		{
-//			float f = FloatFromString(rotStr, 0.01f, 50.0f, 0.0f);
-//			pir.fSlowerROTATE = (f > 0.0f) ? f : 0.5000f;
-//		}
-//		pir.debuglog.FormattedMessage(" fSlowerROTATE=%.4f (%s)", pir.fSlowerROTATE, rotStr.empty() ? "hardcoded" : "ini");
-//
-//		std::string zoomStr = GetPluginINISettingAsString(section, "fSlowerZOOM");
-//		if (!zoomStr.empty())
-//		{
-//			float f = FloatFromString(zoomStr, 0.01f, 50.0f, 0.0f);
-//			pir.fSlowerZOOM = (f > 0.0f) ? f : 1.0000f;
-//		}
-//		pir.debuglog.FormattedMessage(" fSlowerZOOM=%.4f (%s)", pir.fSlowerZOOM, zoomStr.empty() ? "hardcoded" : "ini");
-//
-//		std::string val = GetPluginINISettingAsString(section, "SLOW_ENABLED");
-//		bool wantSlow = GetBoolFromINIString(val, false);
-//
-//		if (wantSlow != pir.SLOW_ENABLED)
-//			Toggle_SlowZoomAndRotate();
-//
-//		pir.debuglog.FormattedMessage(" SLOW_ENABLED=%d (%s)", wantSlow, val.empty() ? "hardcoded" : (wantSlow != pir.SLOW_ENABLED ? "toggled" : "unchanged"));
-//	}
-//
-//	// ------------------- Custom rotate degrees -------------------
-//	{
-//		std::string xStr = GetPluginINISettingAsString(section, "fRotateDegreesCustomX");
-//		if (!xStr.empty())
-//		{
-//			float f = FloatFromString(xStr, 0.001f, 360.000f, 3.6000f);
-//			pir.fRotateDegreesCustomX = (f > 0.0f) ? f : 3.6000f;
-//		}
-//		pir.debuglog.FormattedMessage(" fRotateDegreesCustomX=%.4f (%s)", pir.fRotateDegreesCustomX, xStr.empty() ? "hardcoded" : "ini");
-//
-//		std::string yStr = GetPluginINISettingAsString(section, "fRotateDegreesCustomY");
-//		if (!yStr.empty())
-//		{
-//			float f = FloatFromString(yStr, 0.001f, 360.000f, 3.6000f);
-//			pir.fRotateDegreesCustomY = (f > 0.0f) ? f : 3.6000f;
-//		}
-//		pir.debuglog.FormattedMessage(" fRotateDegreesCustomY=%.4f (%s)", pir.fRotateDegreesCustomY, yStr.empty() ? "hardcoded" : "ini");
-//
-//		std::string zStr = GetPluginINISettingAsString(section, "fRotateDegreesCustomZ");
-//		if (!zStr.empty())
-//		{
-//			float f = FloatFromString(zStr, 0.001f, 360.000f, 3.6000f);
-//			pir.fRotateDegreesCustomZ = (f > 0.0f) ? f : 3.6000f;
-//		}
-//		pir.debuglog.FormattedMessage(" fRotateDegreesCustomZ=%.4f (%s)", pir.fRotateDegreesCustomZ, zStr.empty() ? "hardcoded" : "ini");
-//	}
-//
-//	pirlog("Finished reading INI.");
-//}
 
 static void ReadINI()
 {
@@ -1737,10 +1666,12 @@ extern "C" {
 		pluginVersion,
 		"PlaceInRed",
 		"RandyConstan",
-		0,
-		0,
-		{	RUNTIME_VERSION_1_11_221, 1
-		},
-		0,
+		0, // addressIndependence
+		0, // structureIndependence
+		{ RUNTIME_VERSION_1_11_221, 0 }, // compatibleVersions[0]=Target, [1]=Sentinel Terminator
+		0, // seVersionRequired
+		0, // reservedNonBreaking
+		0, // reservedBreaking
+		{ 0 } // reserved[512] padding block
 	};
 }
