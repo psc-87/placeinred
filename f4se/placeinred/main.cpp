@@ -1,8 +1,7 @@
 #include "main.h"
 
-
 UInt32 pluginVersion = 16;
-static PlaceInRed pir;
+PlaceInRed pir;
 
 static SimpleFinder FirstConsole;
 static SimpleFinder FirstObScript;
@@ -20,6 +19,8 @@ static SimpleFinder ParseConsoleArg;
 constexpr uintptr_t WS_MODE_OFFSET_IN_WORKSHOP = 0x0;   // UInt8: 1 = in workshop mode
 constexpr uintptr_t WS_MODE_OFFSET_GRABBED = 0xB;   // UInt8: 1 = object grabbed
 constexpr UInt8     WS_MODE_TRUE = 0x01;
+
+static ObScriptParam s_TwoConsoleParams[2];
 
 // Simple function to read memory (safe version)
 static bool ReadMemory(uintptr_t addr, void* data, size_t len)
@@ -75,7 +76,8 @@ static float FloatFromString(std::string fString, float min = 0.001, float max =
 	{
 		return error;
 	}
-	if (theFloat > min && theFloat < max) {
+	//if (theFloat > min && theFloat < max) {
+	if (theFloat >= min && theFloat <= max) {
 		return theFloat;
 	}
 	else {
@@ -378,6 +380,7 @@ static void LogPatterns()
 //	return nullptr;
 //}
 
+// return the currently selected workshop ref with some safety checks
 static TESObjectREFR* GetCurrentWSRef(bool bOnlySelectReferences = true)
 {
 	if (!CurrentWSRef.ptr || !CurrentWSRef.addr || !IsPlayerInWorkshopMode())
@@ -538,27 +541,9 @@ static void LogWSRef()
 }
 
 // lock the current WS ref in place by changing the motion type to keyframed
-//static void LockUnlockWSRef(bool unlock = 0, bool sound = 0)
-//{
-//	VirtualMachine* vm = (*g_gameVM)->m_virtualMachine;
-//	TESObjectREFR* ref = GetCurrentWSRef();
-//	UInt32 motion = 00000002; //Motion_Keyframed aka locked in place
-//	bool acti = false; //akAllowActivate
-//
-//	if (unlock == 1) {
-//		motion = 00000001; //Motion_Dynamic unlock and release to havok
-//	}
-//
-//	if (vm && ref) {
-//		SetMotionType_native(vm, NULL, ref, motion, acti);
-//		if (sound == 1) {
-//			pir.PlaySound_UI_func(pir.sLockObjectSound);
-//		}
-//	}
-//}
-
 static void LockUnlockWSRef(bool unlock = false, bool sound = false)
 {
+	if (!g_gameVM || !*g_gameVM) return;
 	VirtualMachine* vm = (*g_gameVM)->m_virtualMachine;
 	TESObjectREFR* ref = GetCurrentWSRef();
 	UInt32 motion = 2; // Motion_Keyframed
@@ -575,10 +560,20 @@ static void LockUnlockWSRef(bool unlock = false, bool sound = false)
 	}
 }
 
-// To switch with strings
-static constexpr unsigned int ConsoleSwitch(const char* s, int off = 0)
+//static constexpr unsigned int ConsoleSwitch(const char* s, int off = 0)
+//{
+//	return !s[off] ? 5381 : (ConsoleSwitch(s, off + 1) * 33) ^ s[off];
+//}
+
+// djb2 hash: Iterative AND constexpr. To switch with strings
+static constexpr unsigned int ConsoleSwitch(const char* s)
 {
-	return !s[off] ? 5381 : (ConsoleSwitch(s, off + 1) * 33) ^ s[off];
+	unsigned int hash = 5381u;
+	while (s && *s)
+	{
+		hash = ((hash << 5) + hash) ^ static_cast<unsigned char>(*s++); // (hash * 33) ^ c
+	}
+	return hash;
 }
 
 // print to console (copied from f4se + modified to use pattern)
@@ -648,34 +643,6 @@ static bool SetCurrentRefScale(float newScale)
 	}
 	return false;
 }
-
-//Move reference to itself
-//static void MoveRefToSelf(int repeat = 0)
-//{
-//	TESObjectREFR* ref = GetCurrentWSRef();
-//	if (ref) {
-//		UInt32 nullHandle = *g_invalidRefHandle;
-//		TESObjectCELL* parentCell = ref->parentCell;
-//		TESWorldSpace* worldspace = CALL_MEMBER_FN(ref, GetWorldspace)();
-//
-//		// new position
-//		NiPoint3 newPos;
-//		newPos.x = ref->pos.x;
-//		newPos.y = ref->pos.y;
-//		newPos.z = ref->pos.z;
-//		// new rotation
-//		NiPoint3 newRot;
-//		newRot.x = ref->rot.x;
-//		newRot.y = ref->rot.y;
-//		newRot.z = ref->rot.z;
-//
-//		for (int i = 0; i <= repeat; i++)
-//		{
-//			MoveRefrToPosition(ref, &nullHandle, parentCell, worldspace, &ref->pos, &ref->rot);
-//		}
-//
-//	}
-//}
 
 // Move reference to itself and optionally repeat the operation to reduce jitter.
 // This is useful when scaling or rotating a reference, as it forces the game to re-evaluate the reference's position and rotation in the world
@@ -1169,8 +1136,9 @@ static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thi
 		case ConsoleSwitch("dumpcmds"):     DumpCmds();             break;
 		case ConsoleSwitch("logref"):       LogWSRef();             break;
 		case ConsoleSwitch("print"):        Toggle_ConsolePrint();  break;		
-		case ConsoleSwitch("sound"):        PIR_PlayFileSound(param2.data());  break;
-		case ConsoleSwitch("uisound"):      PIR_PlayUISound(param2.data());    break;
+		//case ConsoleSwitch("sound"):        PIR_PlayFileSound(param2.data());  break;
+		case ConsoleSwitch("sound"):        if (param2[0]) PIR_PlayFileSound(param2.data());  break;
+		case ConsoleSwitch("uisound"):      if (param2[0]) PIR_PlayUISound(param2.data()); break;
 
 			//toggles
 		case ConsoleSwitch("1"):            Toggle_PlaceInRed();         break;
@@ -1306,49 +1274,63 @@ static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thi
 	return false;
 }
 
-// attempt to create the console command by hijacking an existing one
+// Attempt to create the console command by hijacking an existing one
+// Static storage for command parameters to guarantee lifetime 
+// persistence for the game's internal command table.
+
 static bool PatchConsole(const char* hijacked_cmd_fullname)
 {
-	pirlog("Creating console command.");
+	pirlog("Attempting to hijack console command: %s", hijacked_cmd_fullname);
 
 	if (FirstConsole.cmd == nullptr) {
+		pirlog("Failed because FirstConsole.cmd is a nullptr.");
 		return false;
 	}
 
-	const char* s_CommandToBorrow = hijacked_cmd_fullname;
 	ObScriptCommand* s_hijackedCommand = nullptr;
 	ObScriptParam* s_hijackedCommandParams = nullptr;
 
-	for (ObScriptCommand* iter = FirstConsole.cmd; iter->opcode < (kObScript_NumConsoleCommands + kObScript_ConsoleOpBase); ++iter) {
-		if (!strcmp(iter->longName, s_CommandToBorrow)) {
+	// Scan the command table for the target to hijack
+	for (ObScriptCommand* iter = FirstConsole.cmd;
+		iter->opcode < (kObScript_NumConsoleCommands + kObScript_ConsoleOpBase);
+		++iter)
+	{
+		if (iter->longName && !strcmp(iter->longName, hijacked_cmd_fullname))
+		{
 			s_hijackedCommand = iter;
 			s_hijackedCommandParams = iter->params;
 			break;
 		}
 	}
 
-	if (s_hijackedCommand && s_hijackedCommandParams) {
+	if (s_hijackedCommand && s_hijackedCommandParams)
+	{
+		// Clone the command structure
 		ObScriptCommand cmd = *s_hijackedCommand;
-		ObScriptParam p1 = *s_hijackedCommandParams;
-		ObScriptParam p2 = *s_hijackedCommandParams; // add optional param
-		p2.isOptional = 1;
-		ObScriptParam* allParams = new ObScriptParam[2]; // combine them
-		allParams[0] = p1;
-		allParams[1] = p2;
 
+		// Prepare parameters in static storage to avoid heap leaks
+		s_TwoConsoleParams[0] = s_hijackedCommandParams[0]; // first string param, required
+		s_TwoConsoleParams[1] = s_hijackedCommandParams[0]; // second string param, optional
+		s_TwoConsoleParams[1].isOptional = 1; // second is optional
+
+		// Configure the new command
 		cmd.longName = "placeinred";
 		cmd.shortName = "pir";
-		cmd.helpText = "pir [option] example: pir toggle, pir 1, pir 2, pir 3";
+		cmd.helpText = "pir (placeinred) - type pir help for example usage";
 		cmd.needsParent = 0;
 		cmd.numParams = 2;
 		cmd.execute = ExecuteConsole;
-		cmd.params = allParams;
+		cmd.params = s_TwoConsoleParams;
 		cmd.flags = 0;
-		cmd.eval;
 
+		// Patch the command table
 		SafeWriteBuf((uintptr_t)s_hijackedCommand, &cmd, sizeof(cmd));
+
+		pirlog("Successfully hijacked '%s' -> 'pir' command", hijacked_cmd_fullname);
 		return true;
 	}
+
+	pirlog("Failed to find command to hijack: %s", hijacked_cmd_fullname);
 	return false;
 }
 
@@ -1668,7 +1650,7 @@ extern "C" {
 		"RandyConstan",
 		0, // addressIndependence
 		0, // structureIndependence
-		{ RUNTIME_VERSION_1_11_221, 0 }, // compatibleVersions[0]=Target, [1]=Sentinel Terminator
+		{ RUNTIME_VERSION_1_11_221, 0 }, // compatibleVersions[16]
 		0, // seVersionRequired
 		0, // reservedNonBreaking
 		0, // reservedBreaking

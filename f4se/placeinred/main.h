@@ -1,6 +1,8 @@
 #pragma once
 #pragma warning(disable: 4200) // Non-standard extension used: zero-sized array
 
+#define MATH_PI       3.14159265358979323846
+
 // =========================================================================================
 // INCLUDES
 // =========================================================================================
@@ -27,12 +29,13 @@
 #include "f4se_common/Utilities.h"
 
 // F4SE API
+#include "common/IDebugLog.h"
 #include "f4se/GameExtraData.h"
 #include "f4se/GameData.h"
 #include "f4se/GameForms.h"
 #include "f4se/GameObjects.h"
 #include "f4se/GameReferences.h"
-#include "f4se/NiTypes.h"
+//#include "f4se/NiTypes.h"
 #include "f4se/ObScript.h"
 #include "f4se/PapyrusVM.h"
 #include "f4se/PluginAPI.h"
@@ -41,7 +44,6 @@
 // =========================================================================================
 // TYPE ALIASES (FUNCTION POINTERS)
 // =========================================================================================
-
 using _ParseConsoleArg_Native = bool (*)(void* paramInfo, void* scriptData, void* opcodeOffsetPtr, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, ...);
 using _SetMotionType_Native = void (*)(VirtualMachine* vm, uint32_t stackID, TESObjectREFR* objectReference, int motionType, bool allowActivate);
 using _PlayUISound_Native = void (*)(const char*);
@@ -132,10 +134,8 @@ public:
     // -------------------------------------------------------------------------------------
     IDebugLog               debuglog;
     PluginHandle            pluginHandle = kPluginHandle_Invalid;
-    //F4SEPapyrusInterface*   g_papyrus = nullptr;
     F4SEMessagingInterface* g_messaging = nullptr;
     F4SEObjectInterface*    g_object = nullptr;
-    //F4SETaskInterface*      g_task = nullptr;
 
     const char* plugin_log_file = "\\My Games\\Fallout4\\F4SE\\PlaceInRed.log";
     std::string plugin_ini_path = "Data\\F4SE\\Plugins\\PlaceInRed.ini";
@@ -144,17 +144,17 @@ public:
     // -------------------------------------------------------------------------------------
     // Settings & State Flags
     // -------------------------------------------------------------------------------------
-    bool    bF4SEGameDataIsReady = false;
-    bool    PLACEINRED_ENABLED = false; // pir 1w
-    bool    OBJECTSNAP_ENABLED = true;  // pir 2
-    bool    GROUNDSNAP_ENABLED = true;  // pir 3
-    bool    SLOW_ENABLED = false; // pir 4
-    bool    WORKSHOPSIZE_ENABLED = false; // pir 5
-    bool    OUTLINES_ENABLED = true;  // pir 6
-    bool    ACHIEVEMENTS_ENABLED = false; // pir 7
-    bool    ConsoleNameRef_ENABLED = false; // pir cnref
-    bool    PrintConsoleMessages = true;
-    bool    bAllowConsoleInSurvival = false;
+    bool bF4SEGameDataIsReady = false;
+    bool PLACEINRED_ENABLED = false; // pir 1
+    bool OBJECTSNAP_ENABLED = true;  // pir 2
+    bool GROUNDSNAP_ENABLED = true;  // pir 3
+    bool SLOW_ENABLED = false; // pir 4
+    bool WORKSHOPSIZE_ENABLED = false; // pir 5
+    bool OUTLINES_ENABLED = true;  // pir 6
+    bool ACHIEVEMENTS_ENABLED = false; // pir 7
+    bool ConsoleNameRef_ENABLED = false; // pir cnref
+    bool PrintConsoleMessages = true;
+    bool bAllowConsoleInSurvival = false;
 
     // -------------------------------------------------------------------------------------
     // Transformation Constants
@@ -275,37 +275,86 @@ public:
     // -------------------------------------------------------------------------------------
     // Help Message
     // -------------------------------------------------------------------------------------
-    const char* ConsoleHelpMSG =
+    //const char* ConsoleHelpMSG =
+    //    "PlaceInRed (pir) - Command Reference\n"
+    //    "==============================================================\n"
+    //    "[ Toggles ]\n"
+    //    "  pir toggle          Toggle Place in Red\n"
+    //    "  pir osnap           Toggle object snapping\n"
+    //    "  pir gsnap           Toggle ground snapping\n"
+    //    "  pir slow            Toggle slower rotate/zoom speed\n"
+    //    "  pir workshopsize    Toggle unlimited workshop build size\n"
+    //    "  pir outlines        Toggle object outlines\n"
+    //    "  pir achievements    Toggle achievements with mods\n"
+    //    "[ Scaling ]\n"
+    //    "  pir scaleup?        Scale up by N percent\n"
+    //    "  pir scaledown?      Scale down by N percent\n"
+    //    "                      (? = 1, 2, 5, 10, 25, 50, 75, 100)\n"
+    //    "[ Rotation ]\n"
+    //    "  pir x?              Rotate +N degrees (X-axis)\n"
+    //    "  pir x-?             Rotate -N degrees (X-axis)\n"
+    //    "  pir y?              Rotate +N degrees (Y-axis)\n"
+    //    "  pir y-?             Rotate -N degrees (Y-axis)\n"
+    //    "  pir z?              Rotate +N degrees (Z-axis)\n"
+    //    "  pir z-?             Rotate -N degrees (Z-axis)\n"
+    //    "                      (? = 0.1, 0.5, 1, 2, 5, 10, 15, 30, 45)\n"
+    //    "[ Custom Rotation ]\n"
+    //    "  pir ?c              ? = x y z\n"
+    //    "  pir ?-c             c = literal c means it will use custom degrees set in placeinred.ini)\n"
+    //    "[ Object Physics ]\n"
+    //    "  pir lock                Lock object (disable physics)\n"
+    //    "  pir lockq               Lock object (no sound FX)\n"
+    //    "  pir unlock              Unlock object (enable physics)\n"
+    //    "[ Miscellaneous ]\n"
+    //    "  pir wb                  Toggle allow moving workbench\n"
+    //    "  pir cnref               Show ref name in console when clicked\n"
+    //    "==============================================================\n";
+
+    inline static constexpr char ConsoleHelpMSG[] =
         "PlaceInRed (pir) - Command Reference\n"
         "==============================================================\n"
         "[ Toggles ]\n"
-        "  pir toggle              Toggle Place in Red\n"
-        "  pir osnap               Toggle object snapping\n"
-        "  pir gsnap               Toggle ground snapping\n"
-        "  pir slow                Toggle slower rotate/zoom speed\n"
-        "  pir workshopsize        Toggle unlimited workshop build size\n"
-        "  pir outlines            Toggle object outlines\n"
-        "  pir achievements        Toggle achievements with mods\n"
+        "  pir toggle            Toggle Place in Red\n"
+        "  pir osnap             Toggle object snapping\n"
+        "  pir gsnap             Toggle ground snapping\n"
+        "  pir slow              Toggle slower rotate/zoom speed\n"
+        "  pir workshopsize      Toggle unlimited workshop build size\n"
+        "  pir outlines          Toggle object outlines\n"
+        "  pir achievements      Toggle achievements while using mods\n"
+        "\n"
         "[ Scaling ]\n"
-        "  pir scaleup<N>          Scale up by N percent\n"
-        "  pir scaledown<N>        Scale down by N percent\n"
-        "                          (N = 1, 2, 5, 10, 25, 50, 75, 100)\n"
+        "  pir scaleup<N>        Scale selected object up by N percent\n"
+        "  pir scaledown<N>      Scale selected object down by N percent\n"
+        "                       N = 1, 2, 5, 10, 25, 50, 75, 100\n"
+        "                       Example: pir scaleup10\n"
+        "\n"
         "[ Rotation ]\n"
-        "  pir x<N>                Rotate +N degrees (X-axis)\n"
-        "  pir x-<N>               Rotate -N degrees (X-axis)\n"
-        "  pir y<N>                Rotate +N degrees (Y-axis)\n"
-        "  pir y-<N>               Rotate -N degrees (Y-axis)\n"
-        "  pir z<N>                Rotate +N degrees (Z-axis)\n"
-        "  pir z-<N>               Rotate -N degrees (Z-axis)\n"
-        "                          (N = 0.1, 0.5, 1, 2, 5, 10, 15, 30, 45)\n"
-        "                          (N = c for custom degrees in .ini)\n"
+        "  pir x<N>              Rotate +N degrees on the X axis\n"
+        "  pir x-<N>             Rotate -N degrees on the X axis\n"
+        "  pir y<N>              Rotate +N degrees on the Y axis\n"
+        "  pir y-<N>             Rotate -N degrees on the Y axis\n"
+        "  pir z<N>              Rotate +N degrees on the Z axis\n"
+        "  pir z-<N>             Rotate -N degrees on the Z axis\n"
+        "                       N = 0.1, 0.5, 1, 2, 5, 10, 15, 30, 45\n"
+        "                       Example: pir z45\n"
+        "\n"
+        "[ Custom Rotation ]\n"
+        "  pir xc                Rotate +custom degrees on the X axis\n"
+        "  pir x-c               Rotate -custom degrees on the X axis\n"
+        "  pir yc                Rotate +custom degrees on the Y axis\n"
+        "  pir y-c               Rotate -custom degrees on the Y axis\n"
+        "  pir zc                Rotate +custom degrees on the Z axis\n"
+        "  pir z-c               Rotate -custom degrees on the Z axis\n"
+        "                       Custom degrees are set in placeinred.ini\n"
+        "\n"
         "[ Object Physics ]\n"
-        "  pir lock                Lock object (disable physics)\n"
-        "  pir lockq               Lock object (no sound FX)\n"
-        "  pir unlock              Unlock object (enable physics)\n"
+        "  pir lock              Lock object and disable physics\n"
+        "  pir lockq             Lock object silently, with no sound FX\n"
+        "  pir unlock            Unlock object and enable physics\n"
+        "\n"
         "[ Miscellaneous ]\n"
-        "  pir wb                  Toggle allow moving workbench\n"
-        "  pir cnref               Show ref name in console when clicked\n"
+        "  pir wb                Toggle allowing the workbench to be moved\n"
+        "  pir cnref             Show ref name in console when clicked\n"
         "==============================================================\n";
 
 
@@ -313,7 +362,4 @@ private:
     // private things
 };
 
-
-
-extern PlaceInRed pir;
 #define pirlog(...) pir.Log(__func__, __VA_ARGS__)
