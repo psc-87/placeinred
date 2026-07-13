@@ -1,6 +1,0 @@
-interesting bytes starting at bWSMode (Fallout4.exe+2E74994)
-
-example               01      00        ??   00  00        ??     00      ?? ??    01  01       01
-label                 bwsmode holdingE       zerochecks           exitws           onechecks    something grabbed
-Fallout4.exe+2E749??  94      95        96   97  98        99     9A      9B 9C    9D  9E       0x9F
-bwsmode offset        +0      +1        +2   +3  +4        +5     +6      +7 +8    +9  +A       +B
