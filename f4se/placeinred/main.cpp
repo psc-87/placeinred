@@ -30,6 +30,8 @@
 #include "f4se/PluginAPI.h"
 #include "f4se/GameAPI.h"
 
+static void ReadINI();
+
 UInt32 pluginVersion = 17;
 PlaceInRed pir;
 
@@ -287,11 +289,11 @@ static bool FoundPatterns()
 		ParseConsoleArg.ptr     &&
         FirstConsole.ptr        &&
         FirstObScript.ptr       &&
-        pir.SetScale_pattern    &&
-        pir.GetScale_pattern    &&
+        SetScale_pattern    &&
+        GetScale_pattern    &&
         CurrentWSRef.ptr        &&
         WSMode.ptr              &&
-        gConsole.ptr            &&
+        TheFO4Console.ptr            &&
         A && B && C             &&
         D && E && F && G && H   &&
         J && Y && R && CORRECT  &&
@@ -349,16 +351,16 @@ static void LogPatterns()
 	Log("FirstConsole    ", FirstConsole.ptr, FirstConsole.r32);
 	Log("FirstObScript   ", FirstObScript.ptr, FirstObScript.r32);
 	Log("GetConsoleArg   ", ParseConsoleArg.ptr, ParseConsoleArg.r32);
-	Log("GetScale        ", pir.GetScale_pattern, pir.GetScale_r32);
+	Log("GetScale        ", GetScale_pattern, GetScale_r32);
 	Log("InvalidRefHandle", InvalidRefHandle.ptr, InvalidRefHandle.r32);
-	Log("GConsole        ", gConsole.ptr, gConsole.r32);
+	Log("GConsole        ", TheFO4Console.ptr, TheFO4Console.r32);
 	Log("gsnap           ", gsnap, (uintptr_t)gsnap - base);
 	Log("osnap           ", osnap, (uintptr_t)osnap - base);
 	Log("outlines        ", outlines, (uintptr_t)outlines - base);
-	Log("PlayFileSound   ", pir.PlaySound_File_pattern, pir.PlaySound_File_r32);
-	Log("PlayUISound     ", pir.PlaySound_UI_pattern, pir.PlaySound_UI_r32);
+	//Log("PlayFileSound   ", PlaySound_File_pattern, PlaySound_File_r32);
+	Log("PlayUISound     ", PlaySound_UI_pattern, PlaySound_UI_r32);
 	Log("SetMotionType   ", SetMotionType.ptr, SetMotionType.r32);
-	Log("SetScale        ", pir.SetScale_pattern, pir.SetScale_s32);
+	Log("SetScale        ", SetScale_pattern, SetScale_s32);
 	Log("WBSelect        ", WorkbenchSelection.ptr, WorkbenchSelection.r32);
 	Log("WSTimer         ", wstimer, (uintptr_t)wstimer - base);
 	Log("WSSizeFloats    ", WSSize.addr, (uintptr_t)WSSize.addr - base);
@@ -529,6 +531,7 @@ static void LogWSRef()
 	_MESSAGE("=============== END DEBUG ===============");
 }
 
+const char* sLockObjectSound = "UIQuestInactive";
 // lock the current WS ref in place by changing the motion type to keyframed
 static void LockUnlockWSRef(bool unlock = false, bool sound = false)
 {
@@ -544,7 +547,7 @@ static void LockUnlockWSRef(bool unlock = false, bool sound = false)
 	if (vm && ref) {
 		SetMotionType_native(vm, NULL, ref, motion, false);
 		if (sound) {
-			pir.PlaySound_UI_func(pir.sLockObjectSound);
+			PlaySound_UI_func(sLockObjectSound);
 		}
 	}
 }
@@ -569,7 +572,7 @@ static void ToggleLockWSRef(bool sound = false)
 
 	// Play sound if requested
 	if (sound) {
-		pir.PlaySound_UI_func(pir.sLockObjectSound);
+		PlaySound_UI_func(sLockObjectSound);
 	}
 }
 
@@ -587,9 +590,9 @@ static constexpr unsigned int ConsoleSwitch(const char* s)
 // print to console (copied from f4se + modified to use pattern)
 static void PIR_ConsolePrintOld(const char* fmt, ...)
 {
-	if (gConsole.ptr && gConsole.addr && pir.PrintConsoleMessages)
+	if (TheFO4Console.ptr && TheFO4Console.addr && pir.PrintConsoleMessages)
 	{
-		ConsoleManager* mgr = (ConsoleManager*)gConsole.addr;
+		ConsoleManager* mgr = (ConsoleManager*)TheFO4Console.addr;
 		if (mgr) {
 			va_list args;
 			va_start(args, fmt);
@@ -614,10 +617,10 @@ static void PIR_ConsolePrintOld(const char* fmt, ...)
 // print to console (copied from f4se + modified to use pattern)
 static void PIR_ConsolePrint(const char* fmt, ...)
 {
-	if (!gConsole.ptr || !gConsole.addr || !pir.PrintConsoleMessages)
+	if (!TheFO4Console.ptr || !TheFO4Console.addr || !pir.PrintConsoleMessages)
 		return;
 
-	ConsoleManager* mgr = (ConsoleManager*)gConsole.addr;
+	ConsoleManager* mgr = (ConsoleManager*)TheFO4Console.addr;
 	if (!mgr)
 		return;
 
@@ -643,7 +646,6 @@ static void PIR_ConsolePrint(const char* fmt, ...)
 		buf[sizeof(buf) - 1] = '\0';
 	}
 
-	// Reverted to single argument: F4SE's Print doesn't accept format specifiers here
 	CALL_MEMBER_FN(mgr, Print)(buf);
 }
 
@@ -682,7 +684,7 @@ static bool SetCurrentRefScale(float newScale)
 {
 	TESObjectREFR* ref = GetCurrentWSRef();
 	if (ref) {
-		pir.SetScale_func(ref, newScale);
+		SetScale_func(ref, newScale);
 		return true;
 	}
 	return false;
@@ -713,11 +715,11 @@ static bool ModCurrentRefScaleOld(float fMultiplyAmount)
 {
 	TESObjectREFR* ref = GetCurrentWSRef();
 	if (ref) {
-		float oldscale = pir.GetScale_func(ref);
+		float oldscale = GetScale_func(ref);
 		float newScale = oldscale * (fMultiplyAmount);
 		if (newScale > 9.9999f) { newScale = 9.9999f; }
 		if (newScale < 0.0001f) { newScale = 0.0001f; }
-		pir.SetScale_func(ref, newScale);
+		SetScale_func(ref, newScale);
 
 		// fix jitter only if player isnt grabbing the item
 		if (IsCurrentWSRefGrabbed() == false) {
@@ -735,13 +737,13 @@ static bool ModCurrentRefScale(float fMultiplyAmount)
 	TESObjectREFR* ref = GetCurrentWSRef();
 	if (!ref) return false;
 
-	float oldscale = pir.GetScale_func(ref);
+	float oldscale = GetScale_func(ref);
 	float newScale = oldscale * fMultiplyAmount;
 
 	if (newScale > 9.9999f) newScale = 9.9999f;
 	if (newScale < 0.0001f) newScale = 0.0001f;
 
-	pir.SetScale_func(ref, newScale);
+	SetScale_func(ref, newScale);
 
 	if (!IsCurrentWSRefGrabbed()){
 		NiNode* rootNode = ref->GetObjectRootNode();		
@@ -1047,14 +1049,14 @@ static bool Toggle_SurvivalConsole()
 // toggle consolenameref
 static bool Toggle_ConsoleNameRef()
 {
-	if (!pir.cnref_GetRefName_pattern || !pir.cnref_original_call_pattern) {
+	if (!cnref_GetRefName_pattern || !cnref_original_call_pattern) {
 		return false;
 	}
 
 	// toggle off
 	if (pir.ConsoleNameRef_ENABLED)
 	{
-		SafeWriteBuf(uintptr_t(pir.cnref_original_call_pattern), CNAMEREF_OLD, CNAMEREF_OLD_SIZE);
+		SafeWriteBuf(uintptr_t(cnref_original_call_pattern), CNAMEREF_OLD, CNAMEREF_OLD_SIZE);
 		pir.ConsoleNameRef_ENABLED = false;
 		PIR_ConsolePrint("ConsoleRefName toggled off.");
 		return true;
@@ -1063,8 +1065,8 @@ static bool Toggle_ConsoleNameRef()
 	// toggle on
 	if (!pir.ConsoleNameRef_ENABLED)
 	{
-		SafeWriteCall(uintptr_t(pir.cnref_original_call_pattern), pir.cnref_GetRefName_addr); //patch call
-		SafeWrite8(uintptr_t(pir.cnref_original_call_pattern) + 0x05, 0x90); // for a clean patch
+		SafeWriteCall(uintptr_t(cnref_original_call_pattern), cnref_GetRefName_addr); //patch call
+		SafeWrite8(uintptr_t(cnref_original_call_pattern) + 0x05, 0x90); // for a clean patch
 		pir.ConsoleNameRef_ENABLED = true;
 		PIR_ConsolePrint("ConsoleRefName toggled on.");
 		return true;
@@ -1201,22 +1203,62 @@ static bool Toggle_PlaceInRed()
 }
 
 // play sound by filename. must be under data\sounds
-static void PIR_PlayFileSound(const char* wav)
-{
-	if (pir.PlaySound_File_func) {
-		pir.PlaySound_File_func(wav);
-	}
-}
+//static void PIR_PlayFileSound(const char* wav)
+//{
+//	if (PlaySound_File_func) {
+//		PlaySound_File_func(wav);
+//	}
+//}
 
 // play sound using form name
 static void PIR_PlayUISound(const char* sound)
 {
-	if (pir.PlaySound_UI_func) {
-		pir.PlaySound_UI_func(sound);
+	if (PlaySound_UI_func) {
+		PlaySound_UI_func(sound);
 	}
 }
 
-
+static constexpr char console_help_msg[] =
+"PlaceInRed (pir) - Command Reference\n"
+"==============================================================\n"
+"[ Toggles ]\n"
+"  pir toggle            Toggle Place in Red\n"
+"  pir osnap             Toggle object snapping\n"
+"  pir gsnap             Toggle ground snapping\n"
+"  pir slow              Toggle slower rotate/zoom speed\n"
+"  pir workshopsize      Toggle unlimited workshop build size\n"
+"  pir outlines          Toggle object outlines\n"
+"  pir achievements      Toggle achievements while using mods\n"
+"[ Scaling ]\n"
+"  pir scaleup<N>        Scale selected object up by N percent\n"
+"  pir scaledown<N>      Scale selected object down by N percent\n"
+"                       N = 1, 2, 5, 10, 25, 50, 75, 100\n"
+"                       Example: pir scaleup10\n"
+"[ Rotation ]\n"
+"  pir x<N>              Rotate +N degrees on the X axis\n"
+"  pir x-<N>             Rotate -N degrees on the X axis\n"
+"  pir y<N>              Rotate +N degrees on the Y axis\n"
+"  pir y-<N>             Rotate -N degrees on the Y axis\n"
+"  pir z<N>              Rotate +N degrees on the Z axis\n"
+"  pir z-<N>             Rotate -N degrees on the Z axis\n"
+"                       N = 0.1, 0.5, 1, 2, 5, 10, 15, 30, 45\n"
+"                       Example: pir z45\n"
+"[ Custom Rotation ]\n"
+"  pir xc                Rotate +custom degrees on the X axis\n"
+"  pir x-c               Rotate -custom degrees on the X axis\n"
+"  pir yc                Rotate +custom degrees on the Y axis\n"
+"  pir y-c               Rotate -custom degrees on the Y axis\n"
+"  pir zc                Rotate +custom degrees on the Z axis\n"
+"  pir z-c               Rotate -custom degrees on the Z axis\n"
+"                       Custom degrees are set in placeinred.ini\n"
+"[ Object Physics ]\n"
+"  pir lock              Lock object and disable physics\n"
+"  pir lockq             Lock object silently, with no sound FX\n"
+"  pir unlock            Unlock object and enable physics\n"
+"[ Miscellaneous ]\n"
+"  pir wb                Toggle allowing the workbench to be moved\n"
+"  pir cnref             Show ref name in console when clicked\n"
+"==============================================================\n";
 
 // Called every time the console command runs
 static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, double* result, void* opcodeOffsetPtr)
@@ -1228,7 +1270,7 @@ static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thi
 
 	std::array<char, 1024> param1{};
 	std::array<char, 1024> param2{};
-
+		
 	bool consoleresult = ParseConsoleArg_native(
 		paramInfo,
 		scriptData,
@@ -1259,12 +1301,10 @@ static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thi
 		case ConsoleSwitch("dumpcmds"):     DumpCmds(); break;
 		case ConsoleSwitch("logref"):       LogWSRef(); break;
 		case ConsoleSwitch("print"):        Toggle_ConsolePrint(); break;
-		case ConsoleSwitch("sound"):        if (param2[0]) PIR_PlayFileSound(param2.data()); break;
+		//case ConsoleSwitch("sound"):        if (param2[0]) PIR_PlayFileSound(param2.data()); break;
 		case ConsoleSwitch("uisound"):      if (param2[0]) PIR_PlayUISound(param2.data()); break;
 
-			// show help
-		case ConsoleSwitch("?"):
-		case ConsoleSwitch("help"):         PIR_ConsolePrint(pir.ConsoleHelpMSG); break;
+
 
 			// toggles
 		case ConsoleSwitch("1"):
@@ -1284,14 +1324,14 @@ static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thi
 		case ConsoleSwitch("8"):
 		case ConsoleSwitch("wb"):           Toggle_WorkbenchMove(); break;
 
-			// scale constants
+		// scale constants
 		case ConsoleSwitch("scale1"):       SetCurrentRefScale(1.0000f); break;
 		case ConsoleSwitch("scale10"):      SetCurrentRefScale(9.9999f); break;
 
 		// reset angle
 		case ConsoleSwitch("ra"):           ResetCurrentWSRefRotation(); break;
 
-			// modify x angle
+		// modify x angle
 		case ConsoleSwitch("xc"):    RotateCurrentWSRefByDegreesX(pir.fRotateDegreesCustomX); break;
 		case ConsoleSwitch("x-c"):   RotateCurrentWSRefByDegreesX(-pir.fRotateDegreesCustomX); break;
 		case ConsoleSwitch("x0.1"):  RotateCurrentWSRefByDegreesX(0.1f); break;
@@ -1312,7 +1352,7 @@ static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thi
 		case ConsoleSwitch("x-30"):  RotateCurrentWSRefByDegreesX(-30.0f); break;
 		case ConsoleSwitch("x-45"):  RotateCurrentWSRefByDegreesX(-45.0f); break;
 
-			// modify y angle
+		// modify y angle
 		case ConsoleSwitch("yc"):    RotateCurrentWSRefByDegreesY(pir.fRotateDegreesCustomY); break;
 		case ConsoleSwitch("y-c"):   RotateCurrentWSRefByDegreesY(-pir.fRotateDegreesCustomY); break;
 		case ConsoleSwitch("y0.1"):  RotateCurrentWSRefByDegreesY(0.1f); break;
@@ -1333,7 +1373,7 @@ static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thi
 		case ConsoleSwitch("y-30"):  RotateCurrentWSRefByDegreesY(-30.0f); break;
 		case ConsoleSwitch("y-45"):  RotateCurrentWSRefByDegreesY(-45.0f); break;
 
-			// modify z angle
+		// modify z angle
 		case ConsoleSwitch("zc"):    RotateCurrentWSRefByDegreesZ(pir.fRotateDegreesCustomZ); break;
 		case ConsoleSwitch("z-c"):   RotateCurrentWSRefByDegreesZ(-pir.fRotateDegreesCustomZ); break;
 		case ConsoleSwitch("z0.1"):  RotateCurrentWSRefByDegreesZ(0.1f); break;
@@ -1354,7 +1394,7 @@ static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thi
 		case ConsoleSwitch("z-30"):  RotateCurrentWSRefByDegreesZ(-30.0f); break;
 		case ConsoleSwitch("z-45"):  RotateCurrentWSRefByDegreesZ(-45.0f); break;
 
-			// scale up
+		// scale up
 		case ConsoleSwitch("scaleup1"):   ModCurrentRefScale(1.0100f); break;
 		case ConsoleSwitch("scaleup2"):   ModCurrentRefScale(1.0200f); break;
 		case ConsoleSwitch("scaleup5"):   ModCurrentRefScale(1.0500f); break;
@@ -1363,7 +1403,7 @@ static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thi
 		case ConsoleSwitch("scaleup50"):  ModCurrentRefScale(1.5000f); break;
 		case ConsoleSwitch("scaleup100"): ModCurrentRefScale(2.0000f); break;
 
-			// scale down
+		// scale down
 		case ConsoleSwitch("scaledown1"):  ModCurrentRefScale(0.9900f); break;
 		case ConsoleSwitch("scaledown2"):  ModCurrentRefScale(0.9800f); break;
 		case ConsoleSwitch("scaledown5"):  ModCurrentRefScale(0.9500f); break;
@@ -1372,31 +1412,31 @@ static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thi
 		case ConsoleSwitch("scaledown50"): ModCurrentRefScale(0.5000f); break;
 		case ConsoleSwitch("scaledown75"): ModCurrentRefScale(0.2500f); break;
 
-			// lock
+		// locks and unlocks
 		case ConsoleSwitch("lock"):
 		case ConsoleSwitch("l"):       LockUnlockWSRef(false, true); break;
 		case ConsoleSwitch("lockq"):   LockUnlockWSRef(false, false); break;
-
 		case ConsoleSwitch("unlock"):
 		case ConsoleSwitch("u"):       LockUnlockWSRef(true, false); break;
-
-			// lockunlock
 		case ConsoleSwitch("lockunlock"):
 		case ConsoleSwitch("lu"):      ToggleLockWSRef(1); break;
 
-			// lockunlock no sound fx
+		// lockunlock no sound fx
 		case ConsoleSwitch("lockunlockq"):
 		case ConsoleSwitch("luq"):     ToggleLockWSRef(0); break;
 
-			// console name ref toggle
+		// console name ref toggle
 		case ConsoleSwitch("cnref"):   Toggle_ConsoleNameRef(); break;
 
-			// survival console toggle
+		// survival console toggle
 		case ConsoleSwitch("sc"):      Toggle_SurvivalConsole(); break;
 
-		default:
-			PIR_ConsolePrint(pir.ConsoleHelpMSG);
-			break;
+		// show help
+		case ConsoleSwitch("?"):
+		case ConsoleSwitch("help"):         PIR_ConsolePrint(console_help_msg); break;
+
+		// default
+		default: PIR_ConsolePrint(console_help_msg); break;
 		}
 
 		return true;
@@ -1467,7 +1507,7 @@ static bool PatchConsole(const char* hijacked_cmd_fullname)
 	return false;
 }
 
-static std::unordered_map<std::string, std::string> GetIniMap(const std::string& filepath)
+static std::unordered_map<std::string, std::string> GetIniMapOld(const std::string& filepath)
 {
 	std::unordered_map<std::string, std::string> iniData;
 	std::ifstream file(filepath);
@@ -1517,7 +1557,7 @@ static std::unordered_map<std::string, std::string> GetIniMap(const std::string&
 	return iniData;
 }
 
-static void ReadINI()
+static void ReadINIOld()
 {
 	const char* str_hardcoded = "hardcoded (not found in INI)";
 	const char* found_in_ini = "ini";
@@ -1525,7 +1565,7 @@ static void ReadINI()
 	pirlog("Reading PlaceInRed.ini");
 
 	// Read disk ONCE into the map
-	auto iniMap = GetIniMap(GetPluginINIPath());
+	auto iniMap = GetIniMapOld(GetPluginINIPath());
 
 	// Helper to get string from our map instead of disk
 	auto GetValue = [&](const char* key) -> std::string {
@@ -1591,6 +1631,153 @@ static void ReadINI()
 	pirlog("Finished parsing INI from memory.");
 }
 
+// 2. Your complete, compiling INI parser
+static void ToLowerCase(std::string& str) {
+	std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return std::tolower(c); });
+}
+
+static std::unordered_map<std::string, std::string> GetIniMap(const std::string& filepath)
+{
+	std::unordered_map<std::string, std::string> iniData;
+	std::ifstream file(filepath);
+
+	if (!file.is_open()) {
+		pirlog("Warning: Could not open %s", filepath.c_str());
+		return iniData;
+	}
+
+	std::string line;
+
+	auto Trim = [](std::string& s) {
+		s.erase(0, s.find_first_not_of(" \t\r\n"));
+		if (!s.empty()) {
+			s.erase(s.find_last_not_of(" \t\r\n") + 1);
+		}
+		};
+
+	while (std::getline(file, line)) {
+		Trim(line);
+
+		if (line.empty() || line[0] == ';' || line[0] == '#' || line[0] == '[') {
+			continue;
+		}
+
+		size_t comment = line.find_first_of(";#");
+		if (comment != std::string::npos) {
+			line.erase(comment);
+			Trim(line);
+		}
+
+		size_t eq = line.find('=');
+		if (eq != std::string::npos) {
+			std::string key = line.substr(0, eq);
+			std::string val = line.substr(eq + 1);
+
+			Trim(key);
+			Trim(val);
+			ToLowerCase(key); // Normalize key
+
+			if (!key.empty()) {
+				iniData[std::move(key)] = std::move(val);
+			}
+		}
+	}
+	return iniData;
+}
+
+static void ReadINI()
+{
+	pirlog("--- Reading PlaceInRed.ini ---");
+
+	auto iniMap = GetIniMap(GetPluginINIPath());
+
+	auto GetValue = [&](std::string key, std::string& outVal) -> bool {
+		ToLowerCase(key);
+		auto it = iniMap.find(key);
+		if (it != iniMap.end()) {
+			outVal = it->second;
+			return true;
+		}
+		return false;
+		};
+
+	// 1. Lambda for standard bool toggles (Fixed function pointer return type)
+	auto ApplyToggle = [&](const char* key, bool& currentFlag, bool (*toggleFunc)(), bool defaultEnabled)
+		{
+			std::string val;
+			bool found = GetValue(key, val);
+			bool wantEnabled = GetBoolFromINIString(val, defaultEnabled);
+
+			// Changed fallback to (DEF) to maintain strict 5-character alignment 
+			const char* source = found ? "(INI)" : "(DEF)";
+			const char* status = "";
+
+			if (wantEnabled != currentFlag) {
+				toggleFunc();
+				status = "[Toggled]";
+			}
+			else {
+				status = "[Unchanged]";
+			}
+
+			// Surgical spacing: Key(24), Value(7), Source(5)
+			pirlog(" %-24s= %-7s%-5s %s", key, wantEnabled ? "true" : "false", source, status);
+		};
+
+	// 2. Lambda for direct bool assignments (No hooks)
+	auto ApplyBool = [&](const char* key, bool& target, bool defaultEnabled)
+		{
+			std::string val;
+			bool found = GetValue(key, val);
+			target = GetBoolFromINIString(val, defaultEnabled);
+			const char* source = found ? "(INI)" : "(DEF)";
+
+			pirlog(" %-24s= %-7s%-5s [Set]", key, target ? "true" : "false", source);
+		};
+
+	// 3. Lambda for float settings
+	auto ApplyFloat = [&](const char* key, float& target, float minVal, float maxVal, float defVal)
+		{
+			std::string val;
+			bool found = GetValue(key, val);
+			const char* source = found ? "(INI)" : "(DEF)";
+
+			if (found && !val.empty()) {
+				target = FloatFromString(val, minVal, maxVal, defVal);
+			}
+			else {
+				target = defVal;
+			}
+
+			pirlog(" %-24s= %-7.4f%-5s [Set]", key, target, source);
+		};
+
+	// ------------------- Boolean Toggles -------------------
+	ApplyToggle("PLACEINRED_ENABLED", pir.PLACEINRED_ENABLED, Toggle_PlaceInRed, false);
+	ApplyToggle("OBJECTSNAP_ENABLED", pir.OBJECTSNAP_ENABLED, Toggle_ObjectSnap, true);
+	ApplyToggle("GROUNDSNAP_ENABLED", pir.GROUNDSNAP_ENABLED, Toggle_GroundSnap, true);
+	ApplyToggle("WORKSHOPSIZE_ENABLED", pir.WORKSHOPSIZE_ENABLED, Toggle_WorkshopSize, false);
+	ApplyToggle("OUTLINES_ENABLED", pir.OUTLINES_ENABLED, Toggle_Outlines, true);
+	ApplyToggle("ACHIEVEMENTS_ENABLED", pir.ACHIEVEMENTS_ENABLED, Toggle_Achievements, false);
+	ApplyToggle("ConsoleNameRef_ENABLED", pir.ConsoleNameRef_ENABLED, Toggle_ConsoleNameRef, false);
+	ApplyToggle("bAllowConsoleInSurvival", pir.bAllowConsoleInSurvival, Toggle_SurvivalConsole, false);
+
+	// ------------------- Pure Variables --------------------
+	ApplyBool("PrintConsoleMessages", pir.PrintConsoleMessages, true);
+
+	// ------------------- Slow Mode -------------------------
+	ApplyFloat("fSlowerROTATE", pir.fSlowerROTATE, 0.01f, 50.0f, 0.5000f);
+	ApplyFloat("fSlowerZOOM", pir.fSlowerZOOM, 0.01f, 50.0f, 1.0000f);
+	ApplyToggle("SLOW_ENABLED", pir.SLOW_ENABLED, Toggle_SlowZoomAndRotate, false);
+
+	// ------------------- Custom Rotation -------------------
+	ApplyFloat("fRotateDegreesCustomX", pir.fRotateDegreesCustomX, 0.001f, 360.0f, 3.6000f);
+	ApplyFloat("fRotateDegreesCustomY", pir.fRotateDegreesCustomY, 0.001f, 360.0f, 3.6000f);
+	ApplyFloat("fRotateDegreesCustomZ", pir.fRotateDegreesCustomZ, 0.001f, 360.0f, 3.6000f);
+
+	pirlog("--- Finished parsing INI ---");
+}
+
 //init f4se stuff and return false if anything fails
 static bool InitF4SE(const F4SEInterface* f4se)
 {
@@ -1627,8 +1814,8 @@ static void InitPIR()
 	vec_futures.emplace_back(FindPatternAsyncV2(CurrentWSRef.ptr, pat_CurrentWSRef));
 	vec_futures.emplace_back(FindPatternAsyncV2(achievements, pat_achievements));
 	vec_futures.emplace_back(FindPatternAsyncV2(survivalconsole, pat_survivalconsole));
-	vec_futures.emplace_back(FindPatternAsyncV2(pir.cnref_original_call_pattern, pat_cnref_original));
-	vec_futures.emplace_back(FindPatternAsyncV2(pir.cnref_GetRefName_pattern, pat_cnref_GetRefName));
+	vec_futures.emplace_back(FindPatternAsyncV2(cnref_original_call_pattern, pat_cnref_original));
+	vec_futures.emplace_back(FindPatternAsyncV2(cnref_GetRefName_pattern, pat_cnref_GetRefName));
 	vec_futures.emplace_back(FindPatternAsyncV2(A, pat_A));
 	vec_futures.emplace_back(FindPatternAsyncV2(B, pat_B));
 	vec_futures.emplace_back(FindPatternAsyncV2(C, pat_C));
@@ -1647,13 +1834,13 @@ static void InitPIR()
 	vec_futures.emplace_back(FindPatternAsyncV2(FirstConsole.ptr, pat_FirstConsole));
 	vec_futures.emplace_back(FindPatternAsyncV2(FirstObScript.ptr, pat_FirstObScript));
 	vec_futures.emplace_back(FindPatternAsyncV2(ParseConsoleArg.ptr, pat_ParseConsoleArg));
-	vec_futures.emplace_back(FindPatternAsyncV2(pir.GetScale_pattern, pat_GetScale));
-	vec_futures.emplace_back(FindPatternAsyncV2(pir.SetScale_pattern, pat_SetScale));
-	vec_futures.emplace_back(FindPatternAsyncV2(pir.PlaySound_File_pattern, pat_PlaySound_File));
-	vec_futures.emplace_back(FindPatternAsyncV2(pir.PlaySound_UI_pattern, pat_PlaySound_UI));
+	vec_futures.emplace_back(FindPatternAsyncV2(GetScale_pattern, pat_GetScale));
+	vec_futures.emplace_back(FindPatternAsyncV2(SetScale_pattern, pat_SetScale));
+	//vec_futures.emplace_back(FindPatternAsyncV2(PlaySound_File_pattern, pat_PlaySound_File));
+	vec_futures.emplace_back(FindPatternAsyncV2(PlaySound_UI_pattern, pat_PlaySound_UI));
 	vec_futures.emplace_back(FindPatternAsyncV2(WSMode.ptr, pat_WSMode));
 	vec_futures.emplace_back(FindPatternAsyncV2(WSSize.ptr, pat_WSSize));
-	vec_futures.emplace_back(FindPatternAsyncV2(gConsole.ptr, pat_gConsole));
+	vec_futures.emplace_back(FindPatternAsyncV2(TheFO4Console.ptr, pat_gConsole));
 	vec_futures.emplace_back(FindPatternAsyncV2(WorkbenchSelection.ptr, pat_WorkbenchSelection));
 	vec_futures.emplace_back(FindPatternAsyncV2(InvalidRefHandle.ptr, pat_InvalidRefHandle));
 
@@ -1674,7 +1861,7 @@ static void InitPIR()
 	if (wstimer) { ReadMemory((uintptr_t)wstimer, &WSTIMER_OLD, sizeof(WSTIMER_OLD)); }
 	if (osnap) { ReadMemory((uintptr_t)osnap, &OSNAP_OLD, sizeof(OSNAP_OLD)); }
 	if (achievements) { ReadMemory((uintptr_t)achievements, &ACHIEVE_OLD, sizeof(ACHIEVE_OLD)); }
-	if (pir.cnref_original_call_pattern) { ReadMemory((uintptr_t)pir.cnref_original_call_pattern, &CNAMEREF_OLD, sizeof(CNAMEREF_OLD)); }
+	if (cnref_original_call_pattern) { ReadMemory((uintptr_t)cnref_original_call_pattern, &CNAMEREF_OLD, sizeof(CNAMEREF_OLD)); }
 
 
 	// wssize
@@ -1698,9 +1885,9 @@ static void InitPIR()
 	}
 
 	// consolenameref
-	if (pir.cnref_original_call_pattern && pir.cnref_GetRefName_pattern) {
-		pir.cnref_GetRefName_r32 = GetRel32FromPattern((uintptr_t)pir.cnref_GetRefName_pattern, 0x01, 0x05, 0x00);
-		pir.cnref_GetRefName_addr = pir.cnref_GetRefName_r32 ? (pir.FO4BaseAddr + (uintptr_t)pir.cnref_GetRefName_r32) : 0;
+	if (cnref_original_call_pattern && cnref_GetRefName_pattern) {
+		cnref_GetRefName_r32 = GetRel32FromPattern((uintptr_t)cnref_GetRefName_pattern, 0x01, 0x05, 0x00);
+		cnref_GetRefName_addr = cnref_GetRefName_r32 ? (pir.FO4BaseAddr + (uintptr_t)cnref_GetRefName_r32) : 0;
 	}
 
 	// wsmode
@@ -1728,25 +1915,25 @@ static void InitPIR()
 	}
 
 	// setscale
-	if (pir.SetScale_pattern) {
-		pir.SetScale_s32 = GetRel32FromPattern((uintptr_t)pir.SetScale_pattern, 0x01, 0x05, 0x00);
-		if (pir.SetScale_s32) {
-			pir.SetScale_func = RelocAddr<_SetScale_Native>(pir.SetScale_s32);
+	if (SetScale_pattern) {
+		SetScale_s32 = GetRel32FromPattern((uintptr_t)SetScale_pattern, 0x01, 0x05, 0x00);
+		if (SetScale_s32) {
+			SetScale_func = RelocAddr<_SetScale_Native>(SetScale_s32);
 		}
 	}
 
 	// getscale
-	if (pir.GetScale_pattern) {
-		pir.GetScale_r32 = GetRel32FromPattern((uintptr_t)pir.GetScale_pattern, 0x08, 0x0C, 0x00);
-		if (pir.GetScale_r32) {
-			pir.GetScale_func = RelocAddr<_GetScale_Native>(pir.GetScale_r32);
+	if (GetScale_pattern) {
+		GetScale_r32 = GetRel32FromPattern((uintptr_t)GetScale_pattern, 0x08, 0x0C, 0x00);
+		if (GetScale_r32) {
+			GetScale_func = RelocAddr<_GetScale_Native>(GetScale_r32);
 		}
 	}
 
 	// g_console
-	if (gConsole.ptr) {
-		gConsole.r32 = GetRel32FromPattern((uintptr_t)gConsole.ptr, 0x03, 0x07, 0x00);
-		gConsole.addr = gConsole.r32 ? (pir.FO4BaseAddr + (uintptr_t)gConsole.r32) : 0;
+	if (TheFO4Console.ptr) {
+		TheFO4Console.r32 = GetRel32FromPattern((uintptr_t)TheFO4Console.ptr, 0x03, 0x07, 0x00);
+		TheFO4Console.addr = TheFO4Console.r32 ? (pir.FO4BaseAddr + (uintptr_t)TheFO4Console.r32) : 0;
 	}
 
 	// CurrentWSRef
@@ -1788,20 +1975,20 @@ static void InitPIR()
 	}
 	
 	// playuisound
-	if (pir.PlaySound_UI_pattern) {
-		pir.PlaySound_UI_r32 = uintptr_t(pir.PlaySound_UI_pattern) - pir.FO4BaseAddr;
-		if (pir.PlaySound_UI_r32) {
-			pir.PlaySound_UI_func = RelocAddr<_PlayUISound_Native>(pir.PlaySound_UI_r32);
+	if (PlaySound_UI_pattern) {
+		PlaySound_UI_r32 = uintptr_t(PlaySound_UI_pattern) - pir.FO4BaseAddr;
+		if (PlaySound_UI_r32) {
+			PlaySound_UI_func = RelocAddr<_PlayUISound_Native>(PlaySound_UI_r32);
 		}
 	}
 	
 	// playfilesound
-	if (pir.PlaySound_File_pattern) {
-		pir.PlaySound_File_r32 = uintptr_t(pir.PlaySound_File_pattern) - pir.FO4BaseAddr;
-		if (pir.PlaySound_File_r32) {
-			pir.PlaySound_File_func = RelocAddr<_PlayFileSound_Native>(pir.PlaySound_File_r32);
-		}
-	}
+	//if (PlaySound_File_pattern) {
+	//	PlaySound_File_r32 = uintptr_t(PlaySound_File_pattern) - pir.FO4BaseAddr;
+	//	if (PlaySound_File_r32) {
+	//		PlaySound_File_func = RelocAddr<_PlayFileSound_Native>(PlaySound_File_r32);
+	//	}
+	//}
 }
 
 

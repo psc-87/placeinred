@@ -8,9 +8,21 @@
 
 // F4SE API
 #include "common/ITypes.h"
+#include "f4se/GameReferences.h"
 #include "f4se/ObScript.h"
+#include "f4se/PapyrusVM.h"
 
+// =========================================================================================
+// TYPE ALIASES (FUNCTION POINTERS)
+// =========================================================================================
+using _ParseConsoleArg_Native = bool (*)(void* paramInfo, void* scriptData, void* opcodeOffsetPtr, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, ...);
+using _SetMotionType_Native = void (*)(VirtualMachine* vm, uint32_t stackID, TESObjectREFR* objectReference, int motionType, bool allowActivate);
+using _PlayUISound_Native = void (*)(const char*);
+//using _PlayFileSound_Native = void (*)(const char*);
+using _GetScale_Native = float (*)(TESObjectREFR* objRef);
+using _SetScale_Native = void (*)(TESObjectREFR* objRef, float scale);
 
+// custom structure to track a pointer address and other useful things
 struct SimpleFinder
 {
     uintptr_t* ptr = nullptr; // Pointer to a pattern match
@@ -23,14 +35,28 @@ static SimpleFinder CurrentWSRef; // the current workshop reference highlighted 
 static SimpleFinder FirstConsole; // first console command
 static SimpleFinder FirstObScript; // first objectscript command
 static SimpleFinder WorkbenchSelection; // function determines workshop object selection based on 
-static SimpleFinder InvalidRefHandle;
-static SimpleFinder gConsole; // gconsole
-static SimpleFinder ParseConsoleArg;
-static SimpleFinder SetMotionType;
-static SimpleFinder Rotate;
-static SimpleFinder Zoom;
-static SimpleFinder WSMode;
-static SimpleFinder WSSize;
+static SimpleFinder InvalidRefHandle; //same as g_invalidRefHandle
+static SimpleFinder TheFO4Console; // gconsole
+static SimpleFinder ParseConsoleArg; //the function that parses console string arguments (might be a different function for other types)
+static SimpleFinder SetMotionType; //set the motion type of a reference (keyframed, dynamic, etc)
+static SimpleFinder Rotate; //where the game calculates rotate speed of the current grabbed workshop item
+static SimpleFinder Zoom; //where the game calculates zoom speed of the current grabbed workshop item
+static SimpleFinder WSMode; //determines if the player is in workshop mode. used also to determine if the player is grabbing an object in workshop mode and to set correct place bits
+static SimpleFinder WSSize; //memory location where 2 pointers (current workshop draws/triangles) can be found. From there we can patch to prevent increase and set to zero
+
+
+/* interesting bytes starting at bWSMode
+example               01      00        ??   00  00        ??     00      ?? ??    01  01       01
+label                 bwsmode holdingE       zerochecks           exitws           onechecks    something grabbed
+Fallout4.exe+2E749??  94      95        96   97  98        99     9A      9B 9C    9D  9E       0x9F
+bwsmode offset        +0      +1        +2   +3  +4        +5     +6      +7 +8    +9  +A       +B
+*/
+
+//WSMode offsets and bits
+constexpr uintptr_t WSMODE_OFFSET_PLAYERINWSMODE = 0x0; // the offset from bWSMode to the byte that determines if the player is in workshop mode
+constexpr uintptr_t WSMODE_OFFSET_PLAYERGRABBINGOBJECT = 0xB; //workshop object is grabbed
+constexpr UInt8     WSMODE_TRUE = 0x01; // yep obviously but UInt8
+
 
 /**
  * @brief Parses and compiles an IDA-style hex byte signature into parallel byte/mask vectors.
@@ -110,17 +136,6 @@ struct ParsedPattern
     }
 };
 
-/* interesting bytes starting at bWSMode
-
-example               01      00        ??   00  00        ??     00      ?? ??    01  01       01
-label                 bwsmode holdingE       zerochecks           exitws           onechecks    something grabbed
-Fallout4.exe+2E749??  94      95        96   97  98        99     9A      9B 9C    9D  9E       0x9F
-bwsmode offset        +0      +1        +2   +3  +4        +5     +6      +7 +8    +9  +A       +B
-*/
-constexpr uintptr_t WSMODE_OFFSET_PLAYERINWSMODE = 0x0;
-constexpr uintptr_t WSMODE_OFFSET_PLAYERGRABBINGOBJECT = 0xB;
-constexpr UInt8     WSMODE_TRUE = 0x01;
-
 // -------------------------------------------------------------------------------------
 // Memory Scanning Pointers to pattern matches (filled at runtime)
 // -------------------------------------------------------------------------------------
@@ -142,7 +157,6 @@ static uintptr_t* osnap = nullptr;
 static uintptr_t* outlines = nullptr;
 static uintptr_t* achievements = nullptr;
 static uintptr_t* survivalconsole = nullptr;
-
 
 // Patch Bytes - Standard NOPs
 static UInt8  NOP3[3] = { 0x0F, 0x1F, 0x00 };
@@ -209,7 +223,7 @@ static const ParsedPattern pat_FirstObScript{ "48 8D 1D ? ? ? ? 4C 8D 35 ? ? ? ?
 static const ParsedPattern pat_ParseConsoleArg{ "4C 89 4C 24 20 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57" };
 static const ParsedPattern pat_GetScale{ "66 89 BB 08 01 00 00 E8 ? ? ? ? 48 8B 0D ? ? ? ? 0F 28 F0 48" };
 static const ParsedPattern pat_SetScale{ "E8 ? ? ? ? 40 84 F6 75 07 81 63 10 FF FF DF FF 33 ED" };
-static const ParsedPattern pat_PlaySound_File{ "48 8B C4 48 89 58 08 57 48 81 EC 50 01 00 00 8B FA C7 40 18 FF FF FF FF 48" };
+//static const ParsedPattern pat_PlaySound_File{ "48 8B C4 48 89 58 08 57 48 81 EC 50 01 00 00 8B FA C7 40 18 FF FF FF FF 48" };
 static const ParsedPattern pat_PlaySound_UI{ "48 89 5C 24 08 57 48 83 EC 50 48 8B D9 E8 ? ? ? ? 48 85 C0 74 6A" };
 static const ParsedPattern pat_WSMode{ "80 3D ? ? ? ? 00 74 0E C6 07 02 48 8B 5C 24 30 48 83 C4 20 5F C3" };
 static const ParsedPattern pat_WSSize{ "01 05 ? ? ? ? 8B 44 24 58 01 05 ? ? ? ? 85 D2 0F 84" };
@@ -217,3 +231,31 @@ static const ParsedPattern pat_gConsole{ "48 8D 05 ? ? ? ? 48 89 2D ? ? ? ? 48 8
 static const ParsedPattern pat_gDataHandler{ "48 83 3D ? ? ? ? 00 4D 8B F1 41 0F B6 F0 48 8B FA 48 8B D9 0F 84 ? ? ? ? 80 3D ? ? ? ? 00 48" };
 static const ParsedPattern pat_WorkbenchSelection{ "0F B6 84 02 ? ? ? ? 8B 8C 82 ? ? ? ? 48 03 CA FF E1 B0 01 48 83 C4 20 5B C3" };
 static const ParsedPattern pat_InvalidRefHandle{ "3B 05 ? ? ? ? 89 03 0F85 ? ? ? ? 48 8D 0D ? ? ? ? E8 ? ? ? ? 8B 57 28 33 C0 8B CA" };
+
+
+_SetMotionType_Native   SetMotionType_native = nullptr;
+_ParseConsoleArg_Native ParseConsoleArg_native = nullptr;
+
+// Scale Functions
+_GetScale_Native  GetScale_func = nullptr;
+uintptr_t* GetScale_pattern = nullptr;
+SInt32            GetScale_r32 = 0;
+
+_SetScale_Native  SetScale_func = nullptr;
+uintptr_t* SetScale_pattern = nullptr;
+SInt32            SetScale_s32 = 0;
+
+// Sound Functions
+_PlayUISound_Native   PlaySound_UI_func = nullptr;
+uintptr_t* PlaySound_UI_pattern = nullptr;
+SInt32                PlaySound_UI_r32 = 0;
+
+//_PlayFileSound_Native PlaySound_File_func = nullptr;
+//uintptr_t* PlaySound_File_pattern = nullptr;
+//SInt32                PlaySound_File_r32 = 0;
+
+// Console Reference Name Hook
+uintptr_t* cnref_original_call_pattern = nullptr; // Call site when ref is clicked
+uintptr_t* cnref_GetRefName_pattern = nullptr; // Target function pattern
+uintptr_t  cnref_GetRefName_addr = 0;       // Target function address
+SInt32     cnref_GetRefName_r32 = 0;       // Rel32 offset
