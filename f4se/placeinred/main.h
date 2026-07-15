@@ -20,22 +20,24 @@
 #include "common/ITypes.h"
 #include "f4se/PluginAPI.h"
 
-//#define pirlog(...) pir.Log(__func__, __VA_ARGS__)
+// =========================================================================================
+// GLOBAL DEFINES / CONSTANTS
+// =========================================================================================
 #define pirlog(...) pir.Log(std::source_location::current(), __VA_ARGS__)
 constexpr auto PI_20_DIGITS = 3.14159265358979323846;
-
 
 // =========================================================================================
 // PlaceInRed Class
 // =========================================================================================
-
 class PlaceInRed
 {
 public:
-
+    // -------------------------------------------------------------------------------------
+    // Configuration / State Flags
+    // -------------------------------------------------------------------------------------
     UInt32 uLockUnlockLastMotionType = 2; // track the last motion type when using the lockunlock command (default to Motion_Keyframed)
 
-    bool bF4SEGameDataIsReady = false;
+	bool bF4SEGameDataIsReady = false; // set true when f4se sends kMessage_GameDataReady
     bool PLACEINRED_ENABLED = false; // pir 1
     bool OBJECTSNAP_ENABLED = true;  // pir 2
     bool GROUNDSNAP_ENABLED = true;  // pir 3
@@ -43,10 +45,14 @@ public:
     bool WORKSHOPSIZE_ENABLED = false; // pir 5
     bool OUTLINES_ENABLED = true;  // pir 6
     bool ACHIEVEMENTS_ENABLED = false; // pir 7
-    bool ConsoleNameRef_ENABLED = false; // pir cnref
-    bool PrintConsoleMessages = true;
-    bool bAllowConsoleInSurvival = false;
+    bool ConsoleNameRef_ENABLED = false; // pir cnref (default false copy of another mod)
+	bool PrintConsoleMessages = true; // print messages to console when pir commands are used
+	bool bAllowConsoleInSurvival = false; // allow console in survival mode (default false copy of another mod)
+    bool bWorkbenchMoveEnabled = false; // track if we can move the workbench
 
+    // -------------------------------------------------------------------------------------
+    // Workshop Speed / Rotation Values
+    // -------------------------------------------------------------------------------------
     Float32 fOriginalZOOM = 10.0000F; // Workshop Default
     Float32 fOriginalROTATE = 5.0000F;  // Workshop Default
     Float32 fSlowerZOOM = 1.0000F;  // INI Default
@@ -55,12 +61,17 @@ public:
     Float32 fRotateDegreesCustomY = 3.6000F;
     Float32 fRotateDegreesCustomZ = 3.6000F;
 
+    // -------------------------------------------------------------------------------------
+    // F4SE Interfaces / Handles
+    // -------------------------------------------------------------------------------------
     IDebugLog               debuglog;
     PluginHandle            pluginHandle = kPluginHandle_Invalid;
     F4SEMessagingInterface* g_messaging = nullptr;
     F4SEObjectInterface*    g_object = nullptr;
 
-
+    // -------------------------------------------------------------------------------------
+    // Paths / Addresses
+    // -------------------------------------------------------------------------------------
     std::string plugin_ini_path = "Data\\F4SE\\Plugins\\PlaceInRed.ini";
     const char* plugin_log_file = "\\My Games\\Fallout4\\F4SE\\PlaceInRed.log";
 
@@ -69,7 +80,9 @@ public:
 
     std::vector<std::future<void>> vec_patscan;
 
-    // Init
+    // =====================================================================================
+    // Constructor
+    // =====================================================================================
     PlaceInRed()
         : FO4BaseAddr(reinterpret_cast<uintptr_t>(GetModuleHandleA(nullptr)))
         , vec_patscan()
@@ -78,7 +91,9 @@ public:
         vec_patscan.reserve(40);
     }
 
-    // The updated Log function accepting std::source_location
+    // =====================================================================================
+    // Public Logging (new source_location version)
+    // =====================================================================================
     void Log(const std::source_location& loc, const char* fmt, ...) const
     {
         static const auto s_bootTime = std::chrono::steady_clock::now();
@@ -135,7 +150,9 @@ public:
     }
 
 private:
-    // 3. The actual workhorse that formats the string
+    // =====================================================================================
+    // Private Legacy / Internal Logging Helper (kept for compatibility)
+    // =====================================================================================
     void InternalLog(const char* callerFunc, const char* fmt, va_list args) const
     {
         static const auto s_bootTime = std::chrono::steady_clock::now();
@@ -160,4 +177,3 @@ private:
         debuglog.FormattedMessage(finalBuf);
     }
 };
-

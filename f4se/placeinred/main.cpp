@@ -35,6 +35,45 @@ static void ReadINI();
 UInt32 pluginVersion = 17;
 PlaceInRed pir;
 
+// -----------------------------------------------------------------------------
+// Hard-coded memory check based on live debug pointer chain:
+// [[REF + 0xE0] + 0x120] + 0x14 == 0x000234E9
+// -----------------------------------------------------------------------------
+bool IsWorkshopRef_RawChain(void* refPtr)
+{
+	if (!refPtr) {
+		return false;
+	}
+
+	UInt8* rawRef = reinterpret_cast<UInt8*>(refPtr);
+
+	__try
+	{
+		// 1. Read [REF + 0xE0] -> Pointer to Base Form
+		void* baseFormPtr = *reinterpret_cast<void**>(rawRef + 0xE0);
+		if (!baseFormPtr) return false;
+
+		// 2. Read [BaseForm + 0x120] -> Pointer to BGSLocationRefType
+		UInt8* rawBaseForm = reinterpret_cast<UInt8*>(baseFormPtr);
+		void* lctrPtr = *reinterpret_cast<void**>(rawBaseForm + 0x120);
+		if (!lctrPtr) return false;
+
+		// 3. Read [LCTR + 0x14] -> 32-bit FormID
+		UInt8* rawLctr = reinterpret_cast<UInt8*>(lctrPtr);
+		UInt32 formID = *reinterpret_cast<UInt32*>(rawLctr + 0x14);
+
+		// 4. Compare against the Workshop FormID you found
+		return (formID == 0x000234E9);
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER)
+	{
+		// Safely abort if the memory chain breaks at any point
+		return false;
+	}
+}
+
+
+
 // Simple function to read memory (safe version)
 static bool ReadMemory(uintptr_t addr, void* data, size_t len)
 {
@@ -402,7 +441,7 @@ static TESObjectREFR* GetCurrentWSRef(bool bOnlySelectReferences = true)
 
 
 // debug use only - detailed log of TESObjectREFR
-static void LogWSRef()
+static void LogWorkshopReference()
 {
 	TESObjectREFR* ref = GetCurrentWSRef(0);
 
@@ -411,13 +450,18 @@ static void LogWSRef()
 		return;
 	}
 
+	_MESSAGE("LCRT 234E9: %s", IsWorkshopRef_RawChain(ref) ? "YES" : "NO");
+	_MESSAGE("----------------------------------------------");
 	//
 	// Identity
 	//
 	_MESSAGE("Ref Ptr:      %p", ref);
+	_MESSAGE("Ref Ptr:      %p", ref);
 	_MESSAGE("FormID:       %08X", ref->formID);
 	_MESSAGE("FormType:     %02X", ref->GetFormType());
 	_MESSAGE("Flags:        %08X", ref->flags);
+
+	
 
 	if (ref->baseForm)
 		_MESSAGE("BaseForm: %p (%08X)", ref->baseForm, ref->baseForm->formID);
@@ -1299,7 +1343,7 @@ static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thi
 		{
 			// debug and tests
 		case ConsoleSwitch("dumpcmds"):     DumpCmds(); break;
-		case ConsoleSwitch("logref"):       LogWSRef(); break;
+		case ConsoleSwitch("logref"):       LogWorkshopReference(); break;
 		case ConsoleSwitch("print"):        Toggle_ConsolePrint(); break;
 		//case ConsoleSwitch("sound"):        if (param2[0]) PIR_PlayFileSound(param2.data()); break;
 		case ConsoleSwitch("uisound"):      if (param2[0]) PIR_PlayUISound(param2.data()); break;

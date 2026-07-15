@@ -1,11 +1,9 @@
 #pragma once
-
 #include <vector>
 #include <string_view>
 #include <charconv>
 #include <cstdint>
 #include <cstdarg>
-
 // F4SE API
 #include "common/ITypes.h"
 #include "f4se/GameReferences.h"
@@ -22,41 +20,17 @@ using _PlayUISound_Native = void (*)(const char*);
 using _GetScale_Native = float (*)(TESObjectREFR* objRef);
 using _SetScale_Native = void (*)(TESObjectREFR* objRef, float scale);
 
+// =========================================================================================
+// STRUCTURES
+// =========================================================================================
 // custom structure to track a pointer address and other useful things
 struct SimpleFinder
 {
     uintptr_t* ptr = nullptr; // Pointer to a pattern match
-    SInt32           r32 = 0;       // Rel32 offset
-    uintptr_t        addr = 0;       // Final resolved addresss
+    SInt32 r32 = 0; // Rel32 offset
+    uintptr_t addr = 0; // Final resolved addresss
     ObScriptCommand* cmd = nullptr; // For console commands
 };
-
-static SimpleFinder CurrentWSRef; // the current workshop reference highlighted or grabbed
-static SimpleFinder FirstConsole; // first console command
-static SimpleFinder FirstObScript; // first objectscript command
-static SimpleFinder WorkbenchSelection; // function determines workshop object selection based on 
-static SimpleFinder InvalidRefHandle; //same as g_invalidRefHandle
-static SimpleFinder TheFO4Console; // gconsole
-static SimpleFinder ParseConsoleArg; //the function that parses console string arguments (might be a different function for other types)
-static SimpleFinder SetMotionType; //set the motion type of a reference (keyframed, dynamic, etc)
-static SimpleFinder Rotate; //where the game calculates rotate speed of the current grabbed workshop item
-static SimpleFinder Zoom; //where the game calculates zoom speed of the current grabbed workshop item
-static SimpleFinder WSMode; //determines if the player is in workshop mode. used also to determine if the player is grabbing an object in workshop mode and to set correct place bits
-static SimpleFinder WSSize; //memory location where 2 pointers (current workshop draws/triangles) can be found. From there we can patch to prevent increase and set to zero
-
-
-/* interesting bytes starting at bWSMode
-example               01      00        ??   00  00        ??     00      ?? ??    01  01       01
-label                 bwsmode holdingE       zerochecks           exitws           onechecks    something grabbed
-Fallout4.exe+2E749??  94      95        96   97  98        99     9A      9B 9C    9D  9E       0x9F
-bwsmode offset        +0      +1        +2   +3  +4        +5     +6      +7 +8    +9  +A       +B
-*/
-
-//WSMode offsets and bits
-constexpr uintptr_t WSMODE_OFFSET_PLAYERINWSMODE = 0x0; // the offset from bWSMode to the byte that determines if the player is in workshop mode
-constexpr uintptr_t WSMODE_OFFSET_PLAYERGRABBINGOBJECT = 0xB; //workshop object is grabbed
-constexpr UInt8     WSMODE_TRUE = 0x01; // yep obviously but UInt8
-
 
 /**
  * @brief Parses and compiles an IDA-style hex byte signature into parallel byte/mask vectors.
@@ -64,19 +38,17 @@ constexpr UInt8     WSMODE_TRUE = 0x01; // yep obviously but UInt8
  * into contiguous arrays suitable for cache-friendly linear scanning or SIMD vectorization.
  * * Supported formats:
  * - Exact bytes: "48 8B 05" or "488B05"
- * - Wildcards:   "??" or "?" (spaces optional)
- * - Example:     const ParsedPattern Pattern_A{ "48 89 5C ? ? ? ? C8 ? ? ? ?" };
+ * - Wildcards: "??" or "?" (spaces optional)
+ * - Example: const ParsedPattern Pattern_A{ "48 89 5C ? ? ? ? C8 ? ? ? ?" };
  */
 struct ParsedPattern
 {
-    std::vector<uint8_t> bytes;     ///< Target byte sequence. Wildcard positions hold 0x00.
-    std::vector<uint8_t> mask;      ///< Bitmask: 0xFF = exact match required, 0x00 = wildcard/ignore.
-
+    std::vector<uint8_t> bytes; ///< Target byte sequence. Wildcard positions hold 0x00.
+    std::vector<uint8_t> mask; ///< Bitmask: 0xFF = exact match required, 0x00 = wildcard/ignore.
     // Anchor optimizations: Used to rapidly skip mismatched memory regions via std::memchr or SIMD
     // before performing a full byte-by-byte comparison loop.
-    size_t               anchorPos = 0; ///< Index of the first non-wildcard byte in the pattern.
-    uint8_t              anchorVal = 0; ///< Value of the anchor byte.
-
+    size_t anchorPos = 0; ///< Index of the first non-wildcard byte in the pattern.
+    uint8_t anchorVal = 0; ///< Value of the anchor byte.
     /**
      * @brief Constructs a parsed pattern from a hex string signature.
      * @param sig String view of the IDA-style signature (e.g., "E8 ? ? ? ? 48 8D 0D").
@@ -87,26 +59,21 @@ struct ParsedPattern
         // Pre-allocating half the string length avoids reallocations during parsing.
         bytes.reserve(sig.size() / 2);
         mask.reserve(sig.size() / 2);
-
         for (size_t i = 0; i < sig.size(); ++i)
         {
             // Skip formatting spaces
             if (sig[i] == ' ') continue;
-
             // Handle wildcards ('?' or '??')
             if (sig[i] == '?')
             {
                 bytes.push_back(0x00);
                 mask.push_back(0x00);
-
                 // If double-question-mark format ("??"), consume the second character
                 if (i + 1 < sig.size() && sig[i + 1] == '?') ++i;
                 continue;
             }
-
             // Prevent out-of-bounds reading: a valid hex byte requires at least 2 characters remaining
             if (i + 1 >= sig.size()) break;
-
             // Parse two hex characters directly into a byte.
             // std::from_chars is zero-allocation, locale-independent, and significantly faster than strtol/stringstream.
             uint8_t val = 0;
@@ -118,9 +85,7 @@ struct ParsedPattern
                 ++i; // Advance past the second character of the hex pair
             }
         }
-
         if (bytes.empty()) return;
-
         // Locate the primary anchor byte.
         // Finding the first static (non-wildcard) byte allows pattern scanners to use hardware-accelerated
         // searches (like std::memchr / AVX2) to jump directly to candidate memory locations.
@@ -135,6 +100,33 @@ struct ParsedPattern
         }
     }
 };
+
+// =========================================================================================
+// STATIC SIMPLEFINDER INSTANCES
+// =========================================================================================
+static SimpleFinder CurrentWSRef; // the current workshop reference highlighted or grabbed
+static SimpleFinder FirstConsole; // first console command
+static SimpleFinder FirstObScript; // first objectscript command
+static SimpleFinder WorkbenchSelection; // function determines workshop object selection based on
+static SimpleFinder InvalidRefHandle; //same as g_invalidRefHandle
+static SimpleFinder TheFO4Console; // gconsole
+static SimpleFinder ParseConsoleArg; //the function that parses console string arguments (might be a different function for other types)
+static SimpleFinder SetMotionType; //set the motion type of a reference (keyframed, dynamic, etc)
+static SimpleFinder Rotate; //where the game calculates rotate speed of the current grabbed workshop item
+static SimpleFinder Zoom; //where the game calculates zoom speed of the current grabbed workshop item
+static SimpleFinder WSMode; //determines if the player is in workshop mode. used also to determine if the player is grabbing an object in workshop mode and to set correct place bits
+static SimpleFinder WSSize; //memory location where 2 pointers (current workshop draws/triangles) can be found. From there we can patch to prevent increase and set to zero
+
+/* interesting bytes starting at bWSMode
+example 01 00 ?? 00 00 ?? 00 ?? ?? 01 01 01
+label bwsmode holdingE zerochecks exitws onechecks something grabbed
+Fallout4.exe+2E749?? 94 95 96 97 98 99 9A 9B 9C 9D 9E 0x9F
+bwsmode offset +0 +1 +2 +3 +4 +5 +6 +7 +8 +9 +A +B
+*/
+//WSMode offsets and bits
+constexpr uintptr_t WSMODE_OFFSET_PLAYERINWSMODE = 0x0; // the offset from bWSMode to the byte that determines if the player is in workshop mode
+constexpr uintptr_t WSMODE_OFFSET_PLAYERGRABBINGOBJECT = 0xB; //workshop object is grabbed
+constexpr UInt8 WSMODE_TRUE = 0x01; // yep obviously but UInt8
 
 // -------------------------------------------------------------------------------------
 // Memory Scanning Pointers to pattern matches (filled at runtime)
@@ -158,42 +150,51 @@ static uintptr_t* outlines = nullptr;
 static uintptr_t* achievements = nullptr;
 static uintptr_t* survivalconsole = nullptr;
 
+// =========================================================================================
+// PATCH BYTES
+// =========================================================================================
 // Patch Bytes - Standard NOPs
-static UInt8  NOP3[3] = { 0x0F, 0x1F, 0x00 };
-//static UInt8  NOP4[4] = { 0x0F, 0x1F, 0x40, 0x00 };
-//static UInt8  NOP5[5] = { 0x0F, 0x1F, 0x44, 0x00, 0x00 };
-static UInt8  NOP6[6] = { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 };
-//static UInt8  NOP7[7] = { 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00 };
-//static UInt8  NOP8[8] = { 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 };
+static UInt8 NOP3[3] = { 0x0F, 0x1F, 0x00 };
+//static UInt8 NOP4[4] = { 0x0F, 0x1F, 0x40, 0x00 };
+//static UInt8 NOP5[5] = { 0x0F, 0x1F, 0x44, 0x00, 0x00 };
+static UInt8 NOP6[6] = { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 };
+//static UInt8 NOP7[7] = { 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00 };
+//static UInt8 NOP8[8] = { 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 // Patch Bytes- Game Specific Patches
-static UInt8  C_OLD[7] = { 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00 };       // init NOP7 -> movzx eax, byte ptr [...]
-static UInt8  C_NEW[7] = { 0x31, 0xC0, 0x0F, 0x1F, 0x44, 0x00, 0x00 };       // xor al,al; nop x5
-static UInt8  CC_OLD[2] = { 0x75, 0x11 };                                     // JNE 0x11
-static UInt8  CC_NEW[2] = { 0xEB, 0x1C };                                     // JMP 0x1C
-static UInt8  D_OLD[7] = { 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00 };       // init NOP7 -> movzx eax, byte ptr [...]
-static UInt8  D_NEW[7] = { 0x31, 0xC0, 0xB0, 0x01, 0x90, 0x90, 0x90 };       // xor al,al; mov al,01; nop x3
-static UInt8  F_OLD[6] = { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 };             // init NOP6 -> mov [...], al
-static UInt8  J_OLD[2] = { 0x74, 0x35 };                                     // JE 0x35
-static UInt8  J_NEW[2] = { 0xEB, 0x30 };                                     // JMP 0x30
-static UInt8  R_OLD[5] = { 0x0F, 0x1F, 0x44, 0x00, 0x00 };                   // init NOP5 -> call (relative)
-static UInt8  Y_OLD[3] = { 0x8B, 0x58, 0x14 };                               // mov rbx, [rax+14]
-static UInt8  WSTIMER_OLD[6] = { 0x0F, 0x85, 0xAB, 0x00, 0x00, 0x00 };             // JNE
-static UInt8  WSTIMER_NEW[6] = { 0xE9, 0xAC, 0x00, 0x00, 0x00, 0x90 };             // JMP + NOP
-static UInt8  ACHIEVE_OLD[4] = { 0x48, 0x83, 0xEC, 0x28 };                         // sub rsp, 28
-static UInt8  ACHIEVE_NEW[3] = { 0x30, 0xC0, 0xC3 };                               // xor al, al; ret
-static UInt8  OSNAP_OLD[8] = { 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }; // init NOP8 -> movss xmm, [...]
-static UInt8  OSNAP_NEW[8] = { 0x0F, 0x57, 0xF6, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; // xorps xmm6, xmm6; NOP5
-static UInt8  DRAWS_OLD[6] = { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 };             // init NOP6 -> add [...], ...
-static UInt8  TRIS_OLD[6] = { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 };             // init NOP6 -> add [...], ...
-static UInt8  CNAMEREF_OLD[6] = { 0xFF, 0x90, 0xD0, 0x01, 0x00, 0x00 };            // call qword [rax+1D0]
-static size_t CNAMEREF_OLD_SIZE = sizeof(CNAMEREF_OLD) / sizeof(CNAMEREF_OLD[0]);  // proper way to calculate size of array
+static UInt8 C_OLD[7] = { 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00 }; // init NOP7 -> movzx eax, byte ptr [...]
+static UInt8 C_NEW[7] = { 0x31, 0xC0, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; // xor al,al; nop x5
+static UInt8 CC_OLD[2] = { 0x75, 0x11 }; // JNE 0x11
+static UInt8 CC_NEW[2] = { 0xEB, 0x1C }; // JMP 0x1C
+static UInt8 D_OLD[7] = { 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00 }; // init NOP7 -> movzx eax, byte ptr [...]
+static UInt8 D_NEW[7] = { 0x31, 0xC0, 0xB0, 0x01, 0x90, 0x90, 0x90 }; // xor al,al; mov al,01; nop x3
+static UInt8 F_OLD[6] = { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; // init NOP6 -> mov [...], al
+static UInt8 J_OLD[2] = { 0x74, 0x35 }; // JE 0x35
+static UInt8 J_NEW[2] = { 0xEB, 0x30 }; // JMP 0x30
+static UInt8 R_OLD[5] = { 0x0F, 0x1F, 0x44, 0x00, 0x00 }; // init NOP5 -> call (relative)
+static UInt8 Y_OLD[3] = { 0x8B, 0x58, 0x14 }; // mov rbx, [rax+14]
+static UInt8 WSTIMER_OLD[6] = { 0x0F, 0x85, 0xAB, 0x00, 0x00, 0x00 }; // JNE
+static UInt8 WSTIMER_NEW[6] = { 0xE9, 0xAC, 0x00, 0x00, 0x00, 0x90 }; // JMP + NOP
+static UInt8 ACHIEVE_OLD[4] = { 0x48, 0x83, 0xEC, 0x28 }; // sub rsp, 28
+static UInt8 ACHIEVE_NEW[3] = { 0x30, 0xC0, 0xC3 }; // xor al, al; ret
+static UInt8 OSNAP_OLD[8] = { 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }; // init NOP8 -> movss xmm, [...]
+static UInt8 OSNAP_NEW[8] = { 0x0F, 0x57, 0xF6, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; // xorps xmm6, xmm6; NOP5
+static UInt8 DRAWS_OLD[6] = { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; // init NOP6 -> add [...], ...
+static UInt8 TRIS_OLD[6] = { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; // init NOP6 -> add [...], ...
+static UInt8 CNAMEREF_OLD[6] = { 0xFF, 0x90, 0xD0, 0x01, 0x00, 0x00 }; // call qword [rax+1D0]
+static size_t CNAMEREF_OLD_SIZE = sizeof(CNAMEREF_OLD) / sizeof(CNAMEREF_OLD[0]); // proper way to calculate size of array
+
+// =========================================================================================
+// HELPER STATIC DATA
+// =========================================================================================
 static UInt32 CurrentWSRef_Offsets[4] = { 0x0, 0x0, 0x10, 0x110 }; // Offsets to get the current workshop reference from the CurrentWSRef pointer
 static size_t CurrentWSRef_OffsetsSize = sizeof(CurrentWSRef_Offsets) / sizeof(CurrentWSRef_Offsets[0]); // proper way to calculate size of array
-static UInt8  TWO_ZEROS[2] = { 0x00, 0x00 }; // written to bWSMode+0x03 when place in red is enabled only
-static UInt8  TWO_ONES[2] = { 0x01, 0x01 }; // written to bWSMode+0x09 when place in red is enabled only
+static UInt8 TWO_ZEROS[2] = { 0x00, 0x00 }; // written to bWSMode+0x03 when place in red is enabled only
+static UInt8 TWO_ONES[2] = { 0x01, 0x01 }; // written to bWSMode+0x09 when place in red is enabled only
 
-// patterns for scanning
+// =========================================================================================
+// PATTERNS FOR SCANNING
+// =========================================================================================
 static const ParsedPattern pat_SetMotionType{ "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 83 EC 50 45 32 E4 41 8D 41 FF" };
 static const ParsedPattern pat_pirR{ "89 05 ? ? ? ? C6 05 ? ? ? ? 01 48 83 C4 68 C3" };
 static const ParsedPattern pat_Zoom{ "F3 0F 10 0D ? ? ? ? 0F 29 74 24 20 F3 0F 10 35" };
@@ -232,30 +233,30 @@ static const ParsedPattern pat_gDataHandler{ "48 83 3D ? ? ? ? 00 4D 8B F1 41 0F
 static const ParsedPattern pat_WorkbenchSelection{ "0F B6 84 02 ? ? ? ? 8B 8C 82 ? ? ? ? 48 03 CA FF E1 B0 01 48 83 C4 20 5B C3" };
 static const ParsedPattern pat_InvalidRefHandle{ "3B 05 ? ? ? ? 89 03 0F85 ? ? ? ? 48 8D 0D ? ? ? ? E8 ? ? ? ? 8B 57 28 33 C0 8B CA" };
 
-
-_SetMotionType_Native   SetMotionType_native = nullptr;
+// =========================================================================================
+// NATIVE FUNCTION POINTERS & RUNTIME VARIABLES
+// =========================================================================================
+_SetMotionType_Native SetMotionType_native = nullptr;
 _ParseConsoleArg_Native ParseConsoleArg_native = nullptr;
 
 // Scale Functions
-_GetScale_Native  GetScale_func = nullptr;
+_GetScale_Native GetScale_func = nullptr;
 uintptr_t* GetScale_pattern = nullptr;
-SInt32            GetScale_r32 = 0;
-
-_SetScale_Native  SetScale_func = nullptr;
+SInt32 GetScale_r32 = 0;
+_SetScale_Native SetScale_func = nullptr;
 uintptr_t* SetScale_pattern = nullptr;
-SInt32            SetScale_s32 = 0;
+SInt32 SetScale_s32 = 0;
 
 // Sound Functions
-_PlayUISound_Native   PlaySound_UI_func = nullptr;
+_PlayUISound_Native PlaySound_UI_func = nullptr;
 uintptr_t* PlaySound_UI_pattern = nullptr;
-SInt32                PlaySound_UI_r32 = 0;
-
+SInt32 PlaySound_UI_r32 = 0;
 //_PlayFileSound_Native PlaySound_File_func = nullptr;
 //uintptr_t* PlaySound_File_pattern = nullptr;
-//SInt32                PlaySound_File_r32 = 0;
+//SInt32 PlaySound_File_r32 = 0;
 
 // Console Reference Name Hook
 uintptr_t* cnref_original_call_pattern = nullptr; // Call site when ref is clicked
 uintptr_t* cnref_GetRefName_pattern = nullptr; // Target function pattern
-uintptr_t  cnref_GetRefName_addr = 0;       // Target function address
-SInt32     cnref_GetRefName_r32 = 0;       // Rel32 offset
+uintptr_t cnref_GetRefName_addr = 0; // Target function address
+SInt32 cnref_GetRefName_r32 = 0; // Rel32 offset

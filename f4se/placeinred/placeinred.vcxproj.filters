@@ -10,4 +10,7 @@
   <ItemGroup>
     <None Include="exports.def" />
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="future_code.txt" />
+  </ItemGroup>
 </Project>
