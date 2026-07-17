@@ -1,9 +1,7 @@
 #pragma once
 #pragma warning(disable: 4200) // Non-standard extension used: zero-sized array
 
-// =========================================================================================
 // INCLUDES
-// =========================================================================================
 #include <Windows.h>
 #include <corecrt.h>
 #include <chrono>
@@ -20,9 +18,6 @@
 #include "common/ITypes.h"
 #include "f4se/PluginAPI.h"
 
-// =========================================================================================
-// GLOBAL DEFINES / CONSTANTS
-// =========================================================================================
 #define pirlog(...) pir.Log(std::source_location::current(), __VA_ARGS__)
 constexpr auto PI_20_DIGITS = 3.14159265358979323846;
 
@@ -150,30 +145,5 @@ public:
     }
 
 private:
-    // =====================================================================================
-    // Private Legacy / Internal Logging Helper (kept for compatibility)
-    // =====================================================================================
-    void InternalLog(const char* callerFunc, const char* fmt, va_list args) const
-    {
-        static const auto s_bootTime = std::chrono::steady_clock::now();
-        const auto now = std::chrono::steady_clock::now();
 
-        // Get total milliseconds elapsed since DLL boot
-        const auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - s_bootTime).count();
-
-        const auto ms = totalMs % 1000;
-        const auto s = (totalMs / 1000) % 60;
-        const auto m = (totalMs / 60000) % 60;
-        const auto h = (totalMs / 3600000);
-
-        char userMsg[1024];
-        _vsnprintf_s(userMsg, sizeof(userMsg), _TRUNCATE, fmt, args);
-
-        char finalBuf[2048];
-        _snprintf_s(finalBuf, sizeof(finalBuf), _TRUNCATE,
-            "[%02lld:%02lld:%02lld.%03lld] [%s] %s",
-            h, m, s, ms, callerFunc, userMsg);
-
-        debuglog.FormattedMessage(finalBuf);
-    }
 };

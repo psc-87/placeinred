@@ -1,16 +1,19 @@
 #pragma once
 
+// includes
 #include <vector>
 #include <string_view>
 #include <charconv>
 #include <cstdint>
 #include <cstdarg>
+#include <system_error>
 
 // F4SE API
 #include "common/ITypes.h"
 #include "f4se/GameReferences.h"
 #include "f4se/ObScript.h"
 #include "f4se/PapyrusVM.h"
+
 
 // TYPE ALIASES (FUNCTION POINTERS)
 using _SetMotionType_Native = void (*)(VirtualMachine* vm, uint32_t stackID, TESObjectREFR* objectReference, int motionType, bool allowActivate);

@@ -334,7 +334,7 @@ static void LogPatterns()
 		pir.debuglog.FormattedMessage("%s:%p|Fallout4.exe+0x%08X", label, value, rva);
 	};
 
-	pir.debuglog.FormattedMessage("--------------------------------------------------------------------------------");
+	pir.debuglog.FormattedMessage("----------------------------------------------------------------------------");
 	pir.debuglog.FormattedMessage("Base            :%p|Fallout4.exe+0x00000000", (void*)base);
 	Log("bWSMode         ", WSMode.ptr, WSMode.r32);
 	Log("achievements    ", achievements, (uintptr_t)achievements - base);
@@ -373,7 +373,7 @@ static void LogPatterns()
 	Log("WSSizeFinder    ", WSSize.ptr, (uintptr_t)WSSize.ptr - base);
 	pir.debuglog.FormattedMessage("Rotate          :%p|%p|orig %f|slow %f", Rotate.ptr, Rotate.addr, pir.fOriginalROTATE, pir.fSlowerROTATE);
 	pir.debuglog.FormattedMessage("Zoom            :%p|%p|orig %f|slow %f", Zoom.ptr, Zoom.addr, pir.fOriginalZOOM, pir.fSlowerZOOM);
-	pir.debuglog.FormattedMessage("--------------------------------------------------------------------------------");
+	pir.debuglog.FormattedMessage("----------------------------------------------------------------------------");
 }
 
 // Return the currently selected workshop ref with some safety checks
@@ -833,7 +833,7 @@ static void ResetCurrentWSRefRotation()
 
 
 // Helper to wrap angles into the [-PI, PI] range
-inline float NormalizeAngle(float angle) {
+static inline float NormalizeAngle(float angle) {
 	// fmodf is faster than while loops for large degree offsets
 	float wrapped = fmodf(angle + (float)PI_20_DIGITS, (float)(PI_20_DIGITS * 2.0f));
 	if (wrapped < 0) wrapped += (float)(PI_20_DIGITS * 2.0f);
@@ -1186,8 +1186,9 @@ static bool Toggle_PlaceInRed()
 		!F || !G || !H || !J || !R ||
 		!Y || !wstimer || !WSMode.addr)
 	{
-		PIR_ConsolePrint("Toggle failed! One or more of the required pointer addresses is null.");
-		pirlog("Toggle failed! One or more of the required pointer addresses is null.");
+		const char* TogglePlaceInRedFailed = "Toggle failed! One or more of the required pointer addresses is null.";
+		PIR_ConsolePrint(TogglePlaceInRedFailed);
+		pirlog(TogglePlaceInRedFailed);
 		return false;
 	}
 
@@ -1272,13 +1273,6 @@ static bool Toggle_PlaceInRed()
 	return false;
 }
 
-// play sound by filename. must be under data\sounds
-//static void PIR_PlayFileSound(const char* wav)
-//{
-//	if (PlaySound_File_func) {
-//		PlaySound_File_func(wav);
-//	}
-//}
 
 // play sound using form name
 static void PIR_PlayUISound(const char* sound)
@@ -1367,16 +1361,13 @@ static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thi
 
 		switch (ConsoleSwitch(param1.data()))
 		{
-			// debug and tests
+		// debug and tests
 		case ConsoleSwitch("dumpcmds"):     DumpCmds(); break;
 		case ConsoleSwitch("logref"):       LogWorkshopReference(); break;
 		case ConsoleSwitch("print"):        Toggle_ConsolePrint(); break;
-		//case ConsoleSwitch("sound"):        if (param2[0]) PIR_PlayFileSound(param2.data()); break;
 		case ConsoleSwitch("uisound"):      if (param2[0]) PIR_PlayUISound(param2.data()); break;
 
-
-
-			// toggles
+		// toggles
 		case ConsoleSwitch("1"):
 		case ConsoleSwitch("toggle"):       Toggle_PlaceInRed(); break;
 		case ConsoleSwitch("2"):
@@ -1633,7 +1624,7 @@ static std::unordered_map<std::string, std::string> GetIniMap(const std::string&
 
 static void ReadINI()
 {
-	pirlog("--- Reading PlaceInRed.ini ---");
+	pirlog("--- Reading PlaceInRed.ini ---------------------------");
 
 	auto iniMap = GetIniMap(GetPluginINIPath());
 
@@ -1667,7 +1658,7 @@ static void ReadINI()
 			}
 
 			// Surgical spacing: Key(24), Value(7), Source(5)
-			pirlog(" %-24s= %-7s%-5s %s", key, wantEnabled ? "true" : "false", source, status);
+			pirlog("%-24s= %-7s%-5s %s", key, wantEnabled ? "true" : "false", source, status);
 		};
 
 	// 2. Lambda for direct bool assignments (No hooks)
@@ -1678,7 +1669,7 @@ static void ReadINI()
 			target = GetBoolFromINIString(val, defaultEnabled);
 			const char* source = found ? "(INI)" : "(DEF)";
 
-			pirlog(" %-24s= %-7s%-5s [Set]", key, target ? "true" : "false", source);
+			pirlog("%-24s= %-7s%-5s [Set]", key, target ? "true" : "false", source);
 		};
 
 	// 3. Lambda for float settings
@@ -1695,7 +1686,7 @@ static void ReadINI()
 				target = defVal;
 			}
 
-			pirlog(" %-24s= %-7.4f%-5s [Set]", key, target, source);
+			pirlog("%-24s= %-7.4f%-5s [Set]", key, target, source);
 		};
 
 	// ------------------- Boolean Toggles -------------------
@@ -1721,7 +1712,7 @@ static void ReadINI()
 	ApplyFloat("fRotateDegreesCustomY", pir.fRotateDegreesCustomY, 0.001f, 360.0f, 3.6000f);
 	ApplyFloat("fRotateDegreesCustomZ", pir.fRotateDegreesCustomZ, 0.001f, 360.0f, 3.6000f);
 
-	pirlog("--- Finished parsing INI ---");
+	pirlog("--- Finished parsing INI ---------------------------");
 }
 
 //init f4se stuff and return false if anything fails
@@ -1782,7 +1773,6 @@ static void InitPIR()
 	vec_futures.emplace_back(FindPatternAsyncV2(ParseConsoleArg.ptr, pat_ParseConsoleArg));
 	vec_futures.emplace_back(FindPatternAsyncV2(GetScale_pattern, pat_GetScale));
 	vec_futures.emplace_back(FindPatternAsyncV2(SetScale_pattern, pat_SetScale));
-	//vec_futures.emplace_back(FindPatternAsyncV2(PlaySound_File_pattern, pat_PlaySound_File));
 	vec_futures.emplace_back(FindPatternAsyncV2(PlaySound_UI_pattern, pat_PlaySound_UI));
 	vec_futures.emplace_back(FindPatternAsyncV2(WSMode.ptr, pat_WSMode));
 	vec_futures.emplace_back(FindPatternAsyncV2(WSSize.ptr, pat_WSSize));
@@ -1849,13 +1839,10 @@ static void InitPIR()
 		WorkbenchSelection.addr = WorkbenchSelection.r32 ? (pir.FO4BaseAddr + (uintptr_t)WorkbenchSelection.r32) : 0;
 	}
 
-	// wballowstore setup
+	// workbench_allow_store
 	if (workbench_allow_store) {
-		// MUST be 0x17 to safely land on "40 B7 01" (mov dil, 01)
-		workbench_allow_store = (uintptr_t*)((uintptr_t)workbench_allow_store + 0x17);
-
-		// MUST be 0x39 to safely land exactly on "48 85 DB" (test rbx, rbx)
-		workbench_store_return = (uintptr_t)workbench_allow_store + 0x39;
+		workbench_allow_store = (uintptr_t*)((uintptr_t)workbench_allow_store + 0x17); // store allowed
+		workbench_store_return = (uintptr_t)workbench_allow_store + 0x39; // where we return from our custom store check
 	}
 
 	// InvalidRefPointer
