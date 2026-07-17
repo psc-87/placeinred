@@ -13,13 +13,14 @@
 #include <vector>
 #include <source_location> //std::source_location::current()
 
+
 // F4SE API
 #include "common/IDebugLog.h"
 #include "common/ITypes.h"
 #include "f4se/PluginAPI.h"
 
 #define pirlog(...) pir.Log(std::source_location::current(), __VA_ARGS__)
-constexpr auto PI_20_DIGITS = 3.14159265358979323846;
+//constexpr auto PI_20_DIGITS = 3.14159265358979323846;
 
 // =========================================================================================
 // PlaceInRed Class

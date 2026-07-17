@@ -138,6 +138,7 @@ static const ParsedPattern pat_gDataHandler{ "48 83 3D ? ? ? ? 00 4D 8B F1 41 0F
 static const ParsedPattern pat_WorkbenchSelection{ "0F B6 84 02 ? ? ? ? 8B 8C 82 ? ? ? ? 48 03 CA FF E1 B0 01 48 83 C4 20 5B C3" }; // allows workbench to be highlighted
 static const ParsedPattern pat_WorkbenchAllowStore{ "8B 43 28 C1 E8 0B 41 3B C1 75 ?? 48 8B CB E8 ?? ?? ?? 00 84 C0 74 ?? 40 B7 01" }; // the final check to allow storing an object
 static const ParsedPattern pat_InvalidRefHandle{ "3B 05 ? ? ? ? 89 03 0F85 ? ? ? ? 48 8D 0D ? ? ? ? E8 ? ? ? ? 8B 57 28 33 C0 8B CA" };
+static const ParsedPattern pat_GameVirtualMachine{ "48 8B 05 ? ? ? ? 48 89 4D 77 48 8B 90 B0 00 00 00 48 85 D2 74 0B 48 8B CA" };
 
 // SIMPLEFINDERS
 static SimpleFinder CurrentWSRef; // the current workshop reference highlighted or grabbed
@@ -153,13 +154,14 @@ static SimpleFinder Rotate; //where the game calculates rotate speed of the curr
 static SimpleFinder Zoom; //where the game calculates zoom speed of the current grabbed workshop item
 static SimpleFinder WSMode; //determines if the player is in workshop mode. used also to determine if the player is grabbing an object in workshop mode and to set correct place bits
 static SimpleFinder WSSize; //memory location where 2 pointers (current workshop draws/triangles) can be found. From there we can patch to prevent increase and set to zero
+static SimpleFinder GameVirtualMachine; //game virtual machine
 
 /* 
 interesting bytes starting at bWSMode
-example             | 01      00        ??   00  00        ??     00      ?? ??    01  01       01
-label               | bwsmode holdingE       zerochecks           exitws           onechecks    something grabbed
-Fallout4.exe+xxxxx??| 94      95        96   97  98        99     9A      9B 9C    9D  9E       0x9F
-bwsmode offset      | +0      +1        +2   +3  +4        +5     +6      +7 +8    +9  +A       +B
+example             | 01      00        ??    00  00         ??     00      ?? ??    01  01        01
+label               | bwsmode holdingE       zerochecks           exitws            onechecks    something grabbed
+bwsmode offset      | +0      +1        +2    +3   +4        +5     +6      +7 +8    +9  +A        +B
+Fallout4.exe+30EBE??| 5D      5E        5F    60   61        62     63      64 65    66  67        68
 */
 
 // WSMode offsets and bits

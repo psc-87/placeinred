@@ -1,9 +1,7 @@
 #include "main.h"
 #include "patterns.h"
 
-#define	XBYAK_NO_OP_NAMES
-#include "xbyak/xbyak.h"
-
+#include <Windows.h>
 #include <array>
 #include <cctype> // std::tolower
 #include <cmath>
@@ -12,6 +10,7 @@
 #include <cstring>
 #include <excpt.h>
 #include <future>
+#include <numbers> // std::numbers::pi_v<float>
 #include <span>
 #include <string>
 #include <vector>
@@ -36,9 +35,11 @@
 #include <fstream>
 #include <utility>
 
+#define	XBYAK_NO_OP_NAMES
+#include "xbyak/xbyak.h"
+
 UInt32 pluginVersion = 17;
 PlaceInRed pir;
-
 
 
 // Simple function to read memory (safe version)
@@ -287,41 +288,54 @@ static bool GetBoolFromINIString(const std::string& s, bool defaultValue = false
 // Check if we found all the required memory patterns
 static bool FoundPatterns()
 {
-    if (
-		ParseConsoleArg.ptr     &&
-        FirstConsole.ptr        &&
-        FirstObScript.ptr       &&
-        SetScale_pattern        &&
-        GetScale_pattern        &&
-        CurrentWSRef.ptr        &&
-        WSMode.ptr              &&
-        TheFO4Console.ptr       &&
-        A && B && C             &&
-        D && E && F && G && H   &&
-        J && Y && R && CORRECT  &&
-        wstimer && gsnap        &&
-		osnap && outlines       &&
-        WSSize.ptr              &&
-        Zoom.ptr                &&
-        Rotate.ptr              &&
-        SetMotionType.ptr       &&
-        WorkbenchSelection.ptr  &&
-        workbench_allow_store            &&
-		InvalidRefHandle.ptr
-		)
-    {
-        /*
-            These are allowed to be missing (non-critical):
-            - achievements
-            - ConsoleRefCallFinder (copy of another mod, never required)
-            - GDataHandlerFinder (not using yet)
-            - survivalconsole
-        */
-        return true;
+	bool success = true;
+
+	// Macro to check the pattern and log its exact name if it's missing
+	#define CHECK_PATTERN(pattern) \
+    if (!(pattern)) { \
+        pirlog("Missing required address/pattern: " #pattern); \
+        success = false; \
     }
 
-    pirlog("Couldn't find required memory patterns! Check for conflicting mods.");
-    return false;
+	CHECK_PATTERN(ParseConsoleArg.ptr);
+	CHECK_PATTERN(FirstConsole.ptr);
+	CHECK_PATTERN(FirstObScript.ptr);
+	CHECK_PATTERN(SetScale_pattern);
+	CHECK_PATTERN(GetScale_pattern);
+	CHECK_PATTERN(CurrentWSRef.ptr);
+	CHECK_PATTERN(WSMode.ptr);
+	CHECK_PATTERN(TheFO4Console.ptr);
+	CHECK_PATTERN(A);
+	CHECK_PATTERN(B);
+	CHECK_PATTERN(C);
+	CHECK_PATTERN(D);
+	CHECK_PATTERN(E);
+	CHECK_PATTERN(F);
+	CHECK_PATTERN(G);
+	CHECK_PATTERN(H);
+	CHECK_PATTERN(J);
+	CHECK_PATTERN(Y);
+	CHECK_PATTERN(R);
+	CHECK_PATTERN(CORRECT);
+	CHECK_PATTERN(wstimer);
+	CHECK_PATTERN(gsnap);
+	CHECK_PATTERN(osnap);
+	CHECK_PATTERN(outlines);
+	CHECK_PATTERN(WSSize.ptr);
+	CHECK_PATTERN(Zoom.ptr);
+	CHECK_PATTERN(Rotate.ptr);
+	CHECK_PATTERN(SetMotionType.ptr);
+	CHECK_PATTERN(InvalidRefHandle.ptr);
+	CHECK_PATTERN(GameVirtualMachine.ptr);
+	// Clean up the macro so it doesn't leak into the rest of the file
+	#undef CHECK_PATTERN
+
+	if (!success)
+	{
+		pirlog("Couldn't find required memory patterns! Check for conflicting mods.");
+	}
+
+	return success;
 }
 
 // log all the memory patterns to the log file
@@ -334,59 +348,60 @@ static void LogPatterns()
 		pir.debuglog.FormattedMessage("%s:%p|Fallout4.exe+0x%08X", label, value, rva);
 	};
 
-	pir.debuglog.FormattedMessage("----------------------------------------------------------------------------");
-	pir.debuglog.FormattedMessage("Base            :%p|Fallout4.exe+0x00000000", (void*)base);
-	Log("bWSMode         ", WSMode.ptr, WSMode.r32);
-	Log("achievements    ", achievements, (uintptr_t)achievements - base);
-	Log("survivalconsole ", survivalconsole, (uintptr_t)survivalconsole - base);
-	Log("A               ", A, (uintptr_t)A - base);
-	Log("B               ", B, (uintptr_t)B - base);
-	pir.debuglog.FormattedMessage("C               :%p|Fallout4.exe+0x%08X (OLD: %02X%02X%02X%02X%02X%02X%02X)",C, (uintptr_t)C - base, C_OLD[0], C_OLD[1], C_OLD[2], C_OLD[3], C_OLD[4], C_OLD[5], C_OLD[6]);
-	Log("CORRECT         ", CORRECT, (uintptr_t)CORRECT - base);
-	pir.debuglog.FormattedMessage("D               :%p|Fallout4.exe+0x%08X (OLD: %02X%02X%02X%02X%02X%02X%02X)",D, (uintptr_t)D - base, D_OLD[0], D_OLD[1], D_OLD[2], D_OLD[3], D_OLD[4], D_OLD[5], D_OLD[6]);
-	Log("E               ", E, (uintptr_t)E - base);
-	Log("F               ", F, (uintptr_t)F - base);
-	Log("G               ", G, (uintptr_t)G - base);
-	Log("H               ", H, (uintptr_t)H - base);
-	Log("J               ", J, (uintptr_t)J - base);
-	Log("R               ", R, (uintptr_t)R - base);
-	Log("Y               ", Y, (uintptr_t)Y - base);
-	Log("CurrentWSRef    ", CurrentWSRef.ptr, CurrentWSRef.r32);
-	Log("FirstConsole    ", FirstConsole.ptr, FirstConsole.r32);
-	Log("FirstObScript   ", FirstObScript.ptr, FirstObScript.r32);
-	Log("GetConsoleArg   ", ParseConsoleArg.ptr, ParseConsoleArg.r32);
-	Log("GetScale        ", GetScale_pattern, GetScale_r32);
-	Log("InvalidRefHandle", InvalidRefHandle.ptr, InvalidRefHandle.r32);
-	Log("GConsole        ", TheFO4Console.ptr, TheFO4Console.r32);
-	Log("gsnap           ", gsnap, (uintptr_t)gsnap - base);
-	Log("osnap           ", osnap, (uintptr_t)osnap - base);
-	Log("outlines        ", outlines, (uintptr_t)outlines - base);
-	//Log("PlayFileSound   ", PlaySound_File_pattern, PlaySound_File_r32);
-	Log("PlayUISound     ", PlaySound_UI_pattern, PlaySound_UI_r32);
-	Log("SetMotionType   ", SetMotionType.ptr, SetMotionType.r32);
-	Log("SetScale        ", SetScale_pattern, SetScale_s32);
-	Log("WBSelect        ", WorkbenchSelection.ptr, WorkbenchSelection.r32);
-	Log("wballowstore    ", workbench_allow_store, (uintptr_t)workbench_allow_store - base);
-	Log("wballowstorejmp ", workbench_store_return, (uintptr_t)workbench_store_return - base);
-	Log("WSTimer         ", wstimer, (uintptr_t)wstimer - base);
-	Log("WSSizeFloats    ", WSSize.addr, (uintptr_t)WSSize.addr - base);
-	Log("WSSizeFinder    ", WSSize.ptr, (uintptr_t)WSSize.ptr - base);
-	pir.debuglog.FormattedMessage("Rotate          :%p|%p|orig %f|slow %f", Rotate.ptr, Rotate.addr, pir.fOriginalROTATE, pir.fSlowerROTATE);
-	pir.debuglog.FormattedMessage("Zoom            :%p|%p|orig %f|slow %f", Zoom.ptr, Zoom.addr, pir.fOriginalZOOM, pir.fSlowerZOOM);
-	pir.debuglog.FormattedMessage("----------------------------------------------------------------------------");
+	pir.debuglog.FormattedMessage("-------------------------------------------------------------------------------");
+	pir.debuglog.FormattedMessage("Base              :%p|Fallout4.exe+0x00000000", (void*)base);
+	Log("bWSMode           ", WSMode.ptr, WSMode.r32);
+	Log("achievements      ", achievements, (uintptr_t)achievements - base);
+	Log("survivalconsole   ", survivalconsole, (uintptr_t)survivalconsole - base);
+	Log("A                 ", A, (uintptr_t)A - base);
+	Log("B                 ", B, (uintptr_t)B - base);
+	pir.debuglog.FormattedMessage("C                 :%p|Fallout4.exe+0x%08X (OLD: %02X%02X%02X%02X%02X%02X%02X)",C, (uintptr_t)C - base, C_OLD[0], C_OLD[1], C_OLD[2], C_OLD[3], C_OLD[4], C_OLD[5], C_OLD[6]);
+	Log("CORRECT           ", CORRECT, (uintptr_t)CORRECT - base);
+	pir.debuglog.FormattedMessage("D                 :%p|Fallout4.exe+0x%08X (OLD: %02X%02X%02X%02X%02X%02X%02X)",D, (uintptr_t)D - base, D_OLD[0], D_OLD[1], D_OLD[2], D_OLD[3], D_OLD[4], D_OLD[5], D_OLD[6]);
+	Log("E                 ", E, (uintptr_t)E - base);
+	Log("F                 ", F, (uintptr_t)F - base);
+	Log("G                 ", G, (uintptr_t)G - base);
+	Log("H                 ", H, (uintptr_t)H - base);
+	Log("J                 ", J, (uintptr_t)J - base);
+	Log("R                 ", R, (uintptr_t)R - base);
+	Log("Y                 ", Y, (uintptr_t)Y - base);
+	Log("CurrentWSRef      ", CurrentWSRef.ptr, CurrentWSRef.r32);
+	Log("FirstConsole      ", FirstConsole.ptr, FirstConsole.r32);
+	Log("FirstObScript     ", FirstObScript.ptr, FirstObScript.r32);
+	Log("GetConsoleArg     ", ParseConsoleArg.ptr, ParseConsoleArg.r32);
+	Log("GetScale          ", GetScale_pattern, GetScale_r32);
+	Log("InvalidRefHandle  ", InvalidRefHandle.ptr, InvalidRefHandle.r32);
+	Log("GameVirtualMachine", InvalidRefHandle.ptr, InvalidRefHandle.r32);
+	Log("GConsole          ", TheFO4Console.ptr, TheFO4Console.r32);
+	Log("gsnap             ", gsnap, (uintptr_t)gsnap - base);
+	Log("osnap             ", osnap, (uintptr_t)osnap - base);
+	Log("outlines          ", outlines, (uintptr_t)outlines - base);
+	Log("PlayUISound       ", PlaySound_UI_pattern, PlaySound_UI_r32);
+	Log("SetMotionType     ", SetMotionType.ptr, SetMotionType.r32);
+	Log("SetScale          ", SetScale_pattern, SetScale_s32);
+	Log("WBSelect          ", WorkbenchSelection.ptr, WorkbenchSelection.r32);
+	Log("wballowstore      ", workbench_allow_store, (uintptr_t)workbench_allow_store - base);
+	Log("wballowstorejmp   ", workbench_store_return, (uintptr_t)workbench_store_return - base);
+	Log("WSTimer           ", wstimer, (uintptr_t)wstimer - base);
+	Log("WSSizeFloats      ", WSSize.addr, (uintptr_t)WSSize.addr - base);
+	Log("WSSizeFinder      ", WSSize.ptr, (uintptr_t)WSSize.ptr - base);
+	pir.debuglog.FormattedMessage("Rotate            :%p|%p|orig %f|slow %f", Rotate.ptr, Rotate.addr, pir.fOriginalROTATE, pir.fSlowerROTATE);
+	pir.debuglog.FormattedMessage("Zoom              :%p|%p|orig %f|slow %f", Zoom.ptr, Zoom.addr, pir.fOriginalZOOM, pir.fSlowerZOOM);
+	pir.debuglog.FormattedMessage("-------------------------------------------------------------------------------");
 }
 
 // Return the currently selected workshop ref with some safety checks
 static TESObjectREFR* GetCurrentWSRef(bool bOnlySelectReferences = true)
 {
-	// Short-circuiting: Fast pointer checks happen first, preventing the potentially 
-	// slower IsPlayerInWorkshopMode() function call from executing if the pointers are null.
-	if (!CurrentWSRef.ptr || !CurrentWSRef.addr || !IsPlayerInWorkshopMode())
+	if (!CurrentWSRef.ptr || !CurrentWSRef.addr || !IsPlayerInWorkshopMode()) {
 		return nullptr;
+	}
 
 	uintptr_t refaddr = GimmeMultiPointer(CurrentWSRef.addr, CurrentWSRef_Offsets, CurrentWSRef_OffsetsSize);
-	if (!refaddr)
+
+	if (!refaddr) {
 		return nullptr;
+	}
 
 	TESObjectREFR* ref = reinterpret_cast<TESObjectREFR*>(refaddr);
 
@@ -398,7 +413,8 @@ static TESObjectREFR* GetCurrentWSRef(bool bOnlySelectReferences = true)
 			return nullptr;
 
 		// 3. 0x40 is kFormType_REFR
-		if (bOnlySelectReferences && ref->formType != 0x40)
+		//if (bOnlySelectReferences && ref->formType != 0x40)
+		if (bOnlySelectReferences && ref->formType != kFormType_REFR)
 			return nullptr;
 	}
 	__except (EXCEPTION_EXECUTE_HANDLER)
@@ -411,8 +427,8 @@ static TESObjectREFR* GetCurrentWSRef(bool bOnlySelectReferences = true)
 }
 
 
-// check if the TESObjectREFR's base form has forced location reference type (LCRT) 000234E9
-// this LCRT is only on the main workshop workbench and some quests, so we check it, and prevent storing when workbench move is allowed
+// check if the [[[TESObjectREFR]->baseform]+0x120]+14 is 000234E9
+// 000234E9 LCRT is only on the main workshop workbenches, so we check it and prevent storing (when workbench move is allowed)
 // storing the workbench would corrupt a save
 static bool bIsWorkshopRefBase_LCRT_000234E9(TESObjectREFR* ref)
 {
@@ -494,36 +510,25 @@ static void LogWorkshopReference()
 	TESObjectREFR* ref = GetCurrentWSRef(0);
 
 	if (!ref) {
-
 		return;
 	}
 
-	_MESSAGE("LCRT 234E9: %s", bIsWorkshopRefBase_LCRT_000234E9(ref) ? "YES" : "NO");
-	_MESSAGE("----------------------------------------------");
-	//
-	// Identity
-	//
-	_MESSAGE("Ref Ptr:      %p", ref);
+	_MESSAGE("LCRT 234E9:   %s", bIsWorkshopRefBase_LCRT_000234E9(ref) ? "TRUE" : "FALSE");
 	_MESSAGE("Ref Ptr:      %p", ref);
 	_MESSAGE("FormID:       %08X", ref->formID);
 	_MESSAGE("FormType:     %02X", ref->GetFormType());
 	_MESSAGE("Flags:        %08X", ref->flags);
-
-	
-
-	if (ref->baseForm)
+	if (ref->baseForm) {
 		_MESSAGE("BaseForm: %p (%08X)", ref->baseForm, ref->baseForm->formID);
-	else
+	} else {
 		_MESSAGE("BaseForm: NULL");
+	}
 
-	//
-	// Name (safe virtual)
-	//
 	const char* name = nullptr;
 	__try { name = CALL_MEMBER_FN(ref, GetReferenceName)(); }
 	__except (EXCEPTION_EXECUTE_HANDLER) { name = nullptr; }
 
-	_MESSAGE("Name:         %s", name ? name : "(none)");
+	_MESSAGE("Name:         %s", name ? name : "nullptr");
 
 
 	UInt8 formtype = 0;
@@ -835,9 +840,9 @@ static void ResetCurrentWSRefRotation()
 // Helper to wrap angles into the [-PI, PI] range
 static inline float NormalizeAngle(float angle) {
 	// fmodf is faster than while loops for large degree offsets
-	float wrapped = fmodf(angle + (float)PI_20_DIGITS, (float)(PI_20_DIGITS * 2.0f));
-	if (wrapped < 0) wrapped += (float)(PI_20_DIGITS * 2.0f);
-	return wrapped - (float)PI_20_DIGITS;
+	float wrapped = fmodf(angle + std::numbers::pi_v<float>, (std::numbers::pi_v<float> * 2.0f));
+	if (wrapped < 0) wrapped += (std::numbers::pi_v<float> * 2.0f);
+	return wrapped - std::numbers::pi_v<float>;
 }
 
 // Rotate the current workshop reference by specified degree amounts on each axis
@@ -846,7 +851,7 @@ static void RotateCurrentWSRefByDegrees(float dXDeg, float dYDeg, float dZDeg)
 	TESObjectREFR* ref = GetCurrentWSRef();
 	if (!ref) return;
 
-	constexpr float DegToRad = (float)PI_20_DIGITS / 180.0f;
+	constexpr float DegToRad = std::numbers::pi_v<float> / 180.0f;
 
 	NiPoint3 newRot = ref->rot;
 	newRot.x = NormalizeAngle(newRot.x + (dXDeg * DegToRad)); // Pitch
@@ -856,8 +861,6 @@ static void RotateCurrentWSRefByDegrees(float dXDeg, float dYDeg, float dZDeg)
 	TESObjectCELL* cell = ref->parentCell;
 	TESWorldSpace* worldSpace = (cell) ? cell->worldSpace : nullptr;
 
-	// FIX: Pass valid handle pointer to prevent engine access violation CTD
-	//UInt32 nullHandle = *g_invalidRefHandle;
 	UInt32 nullHandle = InvalidRefHandle.addr ? *(reinterpret_cast<UInt32*>(InvalidRefHandle.addr)) : 0;
 	MoveRefrToPosition(
 		ref,
@@ -1624,7 +1627,7 @@ static std::unordered_map<std::string, std::string> GetIniMap(const std::string&
 
 static void ReadINI()
 {
-	pirlog("--- Reading PlaceInRed.ini ---------------------------");
+	pirlog("--- Reading PlaceInRed.ini ----------------------------");
 
 	auto iniMap = GetIniMap(GetPluginINIPath());
 
@@ -1712,7 +1715,7 @@ static void ReadINI()
 	ApplyFloat("fRotateDegreesCustomY", pir.fRotateDegreesCustomY, 0.001f, 360.0f, 3.6000f);
 	ApplyFloat("fRotateDegreesCustomZ", pir.fRotateDegreesCustomZ, 0.001f, 360.0f, 3.6000f);
 
-	pirlog("--- Finished parsing INI ---------------------------");
+	pirlog("--- Finished parsing INI ------------------------------");
 }
 
 //init f4se stuff and return false if anything fails
@@ -1740,11 +1743,15 @@ static bool InitF4SE(const F4SEInterface* f4se)
 
 static void InitPIR()
 {
+
+	const uintptr_t base = pir.FO4BaseAddr;
+
 	// launch async pattern searches
 	std::vector<std::future<void>> vec_futures;
 
 	pirlog("Multithreaded search for memory patterns.");
 	vec_futures.emplace_back(FindPatternAsyncV2(SetMotionType.ptr, pat_SetMotionType));
+	vec_futures.emplace_back(FindPatternAsyncV2(GameVirtualMachine.ptr, pat_GameVirtualMachine));
 	vec_futures.emplace_back(FindPatternAsyncV2(R, pat_pirR));
 	vec_futures.emplace_back(FindPatternAsyncV2(Zoom.ptr, pat_Zoom));
 	vec_futures.emplace_back(FindPatternAsyncV2(Rotate.ptr, pat_Rotate));
@@ -1781,6 +1788,7 @@ static void InitPIR()
 	vec_futures.emplace_back(FindPatternAsyncV2(workbench_allow_store, pat_WorkbenchAllowStore));
 	vec_futures.emplace_back(FindPatternAsyncV2(InvalidRefHandle.ptr, pat_InvalidRefHandle));
 
+
 	// Wait for all async tasks to complete
 	for (auto& future : vec_futures) {
 		future.get();
@@ -1806,7 +1814,7 @@ static void InitPIR()
 		ReadMemory((uintptr_t)WSSize.ptr + 0x00, &DRAWS_OLD, sizeof(DRAWS_OLD));
 		ReadMemory((uintptr_t)WSSize.ptr + 0x0A, &TRIS_OLD, sizeof(TRIS_OLD));
 		WSSize.r32 = GetRel32FromPattern((uintptr_t)WSSize.ptr, 0x02, 0x06, 0x00);
-		WSSize.addr = WSSize.r32 ? (pir.FO4BaseAddr + (uintptr_t)WSSize.r32) : 0;
+		WSSize.addr = WSSize.r32 ? (base + (uintptr_t)WSSize.r32) : 0;
 	}
 
 	// zoom and rotate
@@ -1814,8 +1822,8 @@ static void InitPIR()
 		Zoom.r32 = GetRel32FromPattern((uintptr_t)Zoom.ptr, 0x04, 0x08, 0x00);
 		Rotate.r32 = GetRel32FromPattern((uintptr_t)Rotate.ptr, 0x04, 0x08, 0x00);
 
-		Zoom.addr = Zoom.r32 ? (pir.FO4BaseAddr + (uintptr_t)Zoom.r32) : 0;
-		Rotate.addr = Rotate.r32 ? (pir.FO4BaseAddr + (uintptr_t)Rotate.r32) : 0;
+		Zoom.addr = Zoom.r32 ? (base + (uintptr_t)Zoom.r32) : 0;
+		Rotate.addr = Rotate.r32 ? (base + (uintptr_t)Rotate.r32) : 0;
 
 		if (Rotate.addr) ReadMemory(Rotate.addr, &pir.fOriginalROTATE, sizeof(Float32));
 		if (Zoom.addr) ReadMemory(Zoom.addr, &pir.fOriginalZOOM, sizeof(Float32));
@@ -1824,19 +1832,19 @@ static void InitPIR()
 	// consolenameref
 	if (cnref_original_call_pattern && cnref_GetRefName_pattern) {
 		cnref_GetRefName_r32 = GetRel32FromPattern((uintptr_t)cnref_GetRefName_pattern, 0x01, 0x05, 0x00);
-		cnref_GetRefName_addr = cnref_GetRefName_r32 ? (pir.FO4BaseAddr + (uintptr_t)cnref_GetRefName_r32) : 0;
+		cnref_GetRefName_addr = cnref_GetRefName_r32 ? (base + (uintptr_t)cnref_GetRefName_r32) : 0;
 	}
 
 	// wsmode
 	if (WSMode.ptr) {
 		WSMode.r32 = GetRel32FromPattern((uintptr_t)WSMode.ptr, 0x02, 0x07, 0x00);
-		WSMode.addr = WSMode.r32 ? (pir.FO4BaseAddr + (uintptr_t)WSMode.r32) : 0;
+		WSMode.addr = WSMode.r32 ? (base + (uintptr_t)WSMode.r32) : 0;
 	}
 
 	// moveworkbench
 	if (WorkbenchSelection.ptr) {
 		ReadMemory((uintptr_t)WorkbenchSelection.ptr + 0x04, &WorkbenchSelection.r32, sizeof(uint32_t));
-		WorkbenchSelection.addr = WorkbenchSelection.r32 ? (pir.FO4BaseAddr + (uintptr_t)WorkbenchSelection.r32) : 0;
+		WorkbenchSelection.addr = WorkbenchSelection.r32 ? (base + (uintptr_t)WorkbenchSelection.r32) : 0;
 	}
 
 	// workbench_allow_store
@@ -1850,7 +1858,7 @@ static void InitPIR()
 		InvalidRefHandle.r32 = GetRel32FromPattern((uintptr_t)InvalidRefHandle.ptr, 0x02, 0x06, 0x00);
 
 		if (InvalidRefHandle.r32 != 0) {
-			InvalidRefHandle.addr = pir.FO4BaseAddr + (uintptr_t)InvalidRefHandle.r32;
+			InvalidRefHandle.addr = base + (uintptr_t)InvalidRefHandle.r32;
 		}
 		else {
 			InvalidRefHandle.addr = 0;
@@ -1876,18 +1884,18 @@ static void InitPIR()
 	// g_console
 	if (TheFO4Console.ptr) {
 		TheFO4Console.r32 = GetRel32FromPattern((uintptr_t)TheFO4Console.ptr, 0x03, 0x07, 0x00);
-		TheFO4Console.addr = TheFO4Console.r32 ? (pir.FO4BaseAddr + (uintptr_t)TheFO4Console.r32) : 0;
+		TheFO4Console.addr = TheFO4Console.r32 ? (base + (uintptr_t)TheFO4Console.r32) : 0;
 	}
 
 	// CurrentWSRef
 	if (CurrentWSRef.ptr) {
 		CurrentWSRef.r32 = GetRel32FromPattern((uintptr_t)CurrentWSRef.ptr, 0x03, 0x07, 0x00);
-		CurrentWSRef.addr = CurrentWSRef.r32 ? (pir.FO4BaseAddr + (uintptr_t)CurrentWSRef.r32) : 0;
+		CurrentWSRef.addr = CurrentWSRef.r32 ? (base + (uintptr_t)CurrentWSRef.r32) : 0;
 	}
 
 	// GetConsoleArg
 	if (ParseConsoleArg.ptr) {
-		ParseConsoleArg.r32 = uintptr_t(ParseConsoleArg.ptr) - pir.FO4BaseAddr;
+		ParseConsoleArg.r32 = uintptr_t(ParseConsoleArg.ptr) - base;
 		if (ParseConsoleArg.r32) {
 			ParseConsoleArg_Native = RelocAddr<_ParseConsoleArg_Native>(ParseConsoleArg.r32);
 		}
@@ -1911,7 +1919,7 @@ static void InitPIR()
 	
 	// setmotiontype
 	if (SetMotionType.ptr) {
-		SetMotionType.r32 = uintptr_t(SetMotionType.ptr) - pir.FO4BaseAddr;
+		SetMotionType.r32 = uintptr_t(SetMotionType.ptr) - base;
 		if (SetMotionType.r32) {
 			SetMotionType_Native = RelocAddr<_SetMotionType_Native>(SetMotionType.r32);
 		}
@@ -1919,19 +1927,19 @@ static void InitPIR()
 	
 	// playuisound
 	if (PlaySound_UI_pattern) {
-		PlaySound_UI_r32 = uintptr_t(PlaySound_UI_pattern) - pir.FO4BaseAddr;
+		PlaySound_UI_r32 = uintptr_t(PlaySound_UI_pattern) - base;
 		if (PlaySound_UI_r32) {
 			PlaySound_Native = RelocAddr<_PlaySound_Native>(PlaySound_UI_r32);
 		}
 	}
-	
-	// playfilesound
-	//if (PlaySound_File_pattern) {
-	//	PlaySound_File_r32 = uintptr_t(PlaySound_File_pattern) - pir.FO4BaseAddr;
-	//	if (PlaySound_File_r32) {
-	//		PlaySound_File_func = RelocAddr<_PlayFileSound_Native>(PlaySound_File_r32);
-	//	}
-	//}
+
+	if (GameVirtualMachine.ptr) {
+		GameVirtualMachine.r32 = GetRel32FromPattern(reinterpret_cast<uintptr_t>(GameVirtualMachine.ptr), 0x03, 0x07, 0x00);
+		if (GameVirtualMachine.r32) {
+			GameVirtualMachine.addr = GameVirtualMachine.r32 ? (base + (uintptr_t)GameVirtualMachine.r32) : 0;
+		}
+	}
+
 }
 
 
@@ -1995,7 +2003,7 @@ extern "C" {
 		F4SEPluginVersionData::kVersion,
 		pluginVersion,
 		"PlaceInRed",
-		"RandyConstan",
+		"psc87",
 		0, // addressIndependence
 		0, // structureIndependence
 		{ RUNTIME_VERSION_1_11_221, 0 }, // compatibleVersions[16]
