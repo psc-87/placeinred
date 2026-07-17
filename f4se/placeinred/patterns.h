@@ -15,7 +15,7 @@
 // =========================================================================================
 using _ParseConsoleArg_Native = bool (*)(void* paramInfo, void* scriptData, void* opcodeOffsetPtr, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, ...);
 using _SetMotionType_Native = void (*)(VirtualMachine* vm, uint32_t stackID, TESObjectREFR* objectReference, int motionType, bool allowActivate);
-using _PlayUISound_Native = void (*)(const char*);
+using _PlaySound_Native = void (*)(const char*);
 //using _PlayFileSound_Native = void (*)(const char*);
 using _GetScale_Native = float (*)(TESObjectREFR* objRef);
 using _SetScale_Native = void (*)(TESObjectREFR* objRef, float scale);
@@ -108,6 +108,7 @@ static SimpleFinder CurrentWSRef; // the current workshop reference highlighted 
 static SimpleFinder FirstConsole; // first console command
 static SimpleFinder FirstObScript; // first objectscript command
 static SimpleFinder WorkbenchSelection; // function determines workshop object selection based on
+static SimpleFinder WorkbenchAllowStore; // place where the game allows an object to be stored. we hook and add 1 additional check to prevent storing workbench.
 static SimpleFinder InvalidRefHandle; //same as g_invalidRefHandle
 static SimpleFinder TheFO4Console; // gconsole
 static SimpleFinder ParseConsoleArg; //the function that parses console string arguments (might be a different function for other types)
@@ -117,20 +118,29 @@ static SimpleFinder Zoom; //where the game calculates zoom speed of the current 
 static SimpleFinder WSMode; //determines if the player is in workshop mode. used also to determine if the player is grabbing an object in workshop mode and to set correct place bits
 static SimpleFinder WSSize; //memory location where 2 pointers (current workshop draws/triangles) can be found. From there we can patch to prevent increase and set to zero
 
-/* interesting bytes starting at bWSMode
-example 01 00 ?? 00 00 ?? 00 ?? ?? 01 01 01
-label bwsmode holdingE zerochecks exitws onechecks something grabbed
-Fallout4.exe+2E749?? 94 95 96 97 98 99 9A 9B 9C 9D 9E 0x9F
-bwsmode offset +0 +1 +2 +3 +4 +5 +6 +7 +8 +9 +A +B
+/* 
+interesting bytes starting at bWSMode
+example             | 01      00        ??   00  00        ??     00      ?? ??    01  01       01
+label               | bwsmode holdingE       zerochecks           exitws           onechecks    something grabbed
+Fallout4.exe+xxxxx??| 94      95        96   97  98        99     9A      9B 9C    9D  9E       0x9F
+bwsmode offset      | +0      +1        +2   +3  +4        +5     +6      +7 +8    +9  +A       +B
 */
-//WSMode offsets and bits
-constexpr uintptr_t WSMODE_OFFSET_PLAYERINWSMODE = 0x0; // the offset from bWSMode to the byte that determines if the player is in workshop mode
-constexpr uintptr_t WSMODE_OFFSET_PLAYERGRABBINGOBJECT = 0xB; //workshop object is grabbed
-constexpr UInt8 WSMODE_TRUE = 0x01; // yep obviously but UInt8
 
-// -------------------------------------------------------------------------------------
-// Memory Scanning Pointers to pattern matches (filled at runtime)
-// -------------------------------------------------------------------------------------
+// WSMode offsets and bits
+static constexpr uintptr_t WSMODE_OFFSET_PLAYERGRABBINGOBJECT = 0x0B; // workshop object is grabbed
+static constexpr uintptr_t WSMODE_PLAYERINWSMODE_OFFSET       = 0x00; // the offset from bWSMode to the byte that determines if the player is in workshop mode
+static constexpr UInt8     WSMODE_PLAYERINWSMODE              = 0x01; // uint8 because of how its used in the function
+static constexpr UInt32    CurrentWSRef_Offsets[] = { 0x0, 0x0, 0x10, 0x110 };
+static constexpr size_t    CurrentWSRef_OffsetsSize = sizeof(CurrentWSRef_Offsets) / sizeof(CurrentWSRef_Offsets[0]);
+
+// workbench move and store related
+static uintptr_t* workbench_allow_store = nullptr; //ptr to the game code when a store is allowed. we hook here and write a 5 byte call to our custom xbyak code to check if the current reference is a workbench.
+static uintptr_t workbench_store_extra_check_addr = 0; // address of the custom xbyak code to check LCRT on the current reference to determine if its the workshop's workbench
+static uintptr_t workbench_store_return = 0; // the address to return to after the custom xbyak code is executed
+
+// ---------------------------------
+// Allow placing objects in red
+// ---------------------------------
 static uintptr_t* A = nullptr;
 static uintptr_t* B = nullptr;
 static uintptr_t* C = nullptr;
@@ -139,29 +149,41 @@ static uintptr_t* E = nullptr;
 static uintptr_t* F = nullptr;
 static uintptr_t* G = nullptr;
 static uintptr_t* H = nullptr;
-static uintptr_t* J = nullptr;
-static uintptr_t* R = nullptr;
-static uintptr_t* Y = nullptr;
-static uintptr_t* CORRECT = nullptr;
-static uintptr_t* wstimer = nullptr;
-static uintptr_t* gsnap = nullptr;
-static uintptr_t* osnap = nullptr;
-static uintptr_t* outlines = nullptr;
-static uintptr_t* achievements = nullptr;
-static uintptr_t* survivalconsole = nullptr;
-
+static uintptr_t* J = nullptr; // skip water restrictions (possibly others)
+static uintptr_t* R = nullptr; // prevent invalid place color
+static uintptr_t* Y = nullptr; // allow picking up yellow items
+static uintptr_t* CORRECT = nullptr; // correct place bit set here
+static uintptr_t* wstimer = nullptr; // workshop timer function
+static uintptr_t* gsnap = nullptr; // groundsnap function
+static uintptr_t* osnap = nullptr; // objectsnap function
+static uintptr_t* outlines = nullptr; // outlines function
+static uintptr_t* achievements = nullptr; // are achievements loaded function
+static uintptr_t* survivalconsole = nullptr; // survival console function
+static uintptr_t* GetScale_pattern = nullptr;
+static uintptr_t* SetScale_pattern = nullptr;
+static uintptr_t* PlaySound_UI_pattern = nullptr;
 // =========================================================================================
+// NATIVE FUNCTIONS
+// =========================================================================================
+static _SetMotionType_Native SetMotionType_Native = nullptr;
+static _ParseConsoleArg_Native ParseConsoleArg_Native = nullptr;
+static _GetScale_Native GetScale_Native = nullptr;
+static _SetScale_Native SetScale_Native = nullptr;
+static _PlaySound_Native PlaySound_Native = nullptr;
+static SInt32 GetScale_r32 = 0;
+static SInt32 SetScale_s32 = 0;
+static SInt32 PlaySound_UI_r32 = 0;
+
+uintptr_t* cnref_original_call_pattern = nullptr; // Call site when ref is clicked
+uintptr_t* cnref_GetRefName_pattern = nullptr; // Target function pattern
+uintptr_t  cnref_GetRefName_addr = 0;       // Target function address
+SInt32     cnref_GetRefName_r32 = 0;       // Rel32 offset
+
 // PATCH BYTES
-// =========================================================================================
-// Patch Bytes - Standard NOPs
-static UInt8 NOP3[3] = { 0x0F, 0x1F, 0x00 };
-//static UInt8 NOP4[4] = { 0x0F, 0x1F, 0x40, 0x00 };
-//static UInt8 NOP5[5] = { 0x0F, 0x1F, 0x44, 0x00, 0x00 };
-static UInt8 NOP6[6] = { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 };
-//static UInt8 NOP7[7] = { 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00 };
-//static UInt8 NOP8[8] = { 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 };
-
-// Patch Bytes- Game Specific Patches
+static UInt8 NOP3[3] = { 0x0F, 0x1F, 0x00 }; // 3 byte nop
+static UInt8 NOP6[6] = { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; // 6 byte nop
+static UInt8 TWO_ZEROS[2] = { 0x00, 0x00 }; // written to bWSMode+0x03 when place in red is enabled only
+static UInt8 TWO_ONES[2] = { 0x01, 0x01 }; // written to bWSMode+0x09 when place in red is enabled only
 static UInt8 C_OLD[7] = { 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00 }; // init NOP7 -> movzx eax, byte ptr [...]
 static UInt8 C_NEW[7] = { 0x31, 0xC0, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; // xor al,al; nop x5
 static UInt8 CC_OLD[2] = { 0x75, 0x11 }; // JNE 0x11
@@ -175,6 +197,8 @@ static UInt8 R_OLD[5] = { 0x0F, 0x1F, 0x44, 0x00, 0x00 }; // init NOP5 -> call (
 static UInt8 Y_OLD[3] = { 0x8B, 0x58, 0x14 }; // mov rbx, [rax+14]
 static UInt8 WSTIMER_OLD[6] = { 0x0F, 0x85, 0xAB, 0x00, 0x00, 0x00 }; // JNE
 static UInt8 WSTIMER_NEW[6] = { 0xE9, 0xAC, 0x00, 0x00, 0x00, 0x90 }; // JMP + NOP
+static UInt8 WBSTORE_OLD[5] = { 0x40, 0xB7, 0x01, 0xEB, 0x34 }; //mov dil,01; jmp 0x34. no _new needed as we write a 5 byte call patch here
+static UInt8 WBSTORE_NEW[5] = { 0 }; // updated later with a 5 byte call to our custom function
 static UInt8 ACHIEVE_OLD[4] = { 0x48, 0x83, 0xEC, 0x28 }; // sub rsp, 28
 static UInt8 ACHIEVE_NEW[3] = { 0x30, 0xC0, 0xC3 }; // xor al, al; ret
 static UInt8 OSNAP_OLD[8] = { 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }; // init NOP8 -> movss xmm, [...]
@@ -184,17 +208,7 @@ static UInt8 TRIS_OLD[6] = { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 }; // init NOP6 
 static UInt8 CNAMEREF_OLD[6] = { 0xFF, 0x90, 0xD0, 0x01, 0x00, 0x00 }; // call qword [rax+1D0]
 static size_t CNAMEREF_OLD_SIZE = sizeof(CNAMEREF_OLD) / sizeof(CNAMEREF_OLD[0]); // proper way to calculate size of array
 
-// =========================================================================================
-// HELPER STATIC DATA
-// =========================================================================================
-static UInt32 CurrentWSRef_Offsets[4] = { 0x0, 0x0, 0x10, 0x110 }; // Offsets to get the current workshop reference from the CurrentWSRef pointer
-static size_t CurrentWSRef_OffsetsSize = sizeof(CurrentWSRef_Offsets) / sizeof(CurrentWSRef_Offsets[0]); // proper way to calculate size of array
-static UInt8 TWO_ZEROS[2] = { 0x00, 0x00 }; // written to bWSMode+0x03 when place in red is enabled only
-static UInt8 TWO_ONES[2] = { 0x01, 0x01 }; // written to bWSMode+0x09 when place in red is enabled only
-
-// =========================================================================================
-// PATTERNS FOR SCANNING
-// =========================================================================================
+// PATTERNS
 static const ParsedPattern pat_SetMotionType{ "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 83 EC 50 45 32 E4 41 8D 41 FF" };
 static const ParsedPattern pat_pirR{ "89 05 ? ? ? ? C6 05 ? ? ? ? 01 48 83 C4 68 C3" };
 static const ParsedPattern pat_Zoom{ "F3 0F 10 0D ? ? ? ? 0F 29 74 24 20 F3 0F 10 35" };
@@ -224,39 +238,11 @@ static const ParsedPattern pat_FirstObScript{ "48 8D 1D ? ? ? ? 4C 8D 35 ? ? ? ?
 static const ParsedPattern pat_ParseConsoleArg{ "4C 89 4C 24 20 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57" };
 static const ParsedPattern pat_GetScale{ "66 89 BB 08 01 00 00 E8 ? ? ? ? 48 8B 0D ? ? ? ? 0F 28 F0 48" };
 static const ParsedPattern pat_SetScale{ "E8 ? ? ? ? 40 84 F6 75 07 81 63 10 FF FF DF FF 33 ED" };
-//static const ParsedPattern pat_PlaySound_File{ "48 8B C4 48 89 58 08 57 48 81 EC 50 01 00 00 8B FA C7 40 18 FF FF FF FF 48" };
-static const ParsedPattern pat_PlaySound_UI{ "48 89 5C 24 08 57 48 83 EC 50 48 8B D9 E8 ? ? ? ? 48 85 C0 74 6A" };
+static const ParsedPattern pat_PlaySound_UI{ "48 89 5C 24 08 57 48 83 EC 50 48 8B D9 E8 ? ? ? ? 48 85 C0 74 6A" }; // for lock and unlock sound
 static const ParsedPattern pat_WSMode{ "80 3D ? ? ? ? 00 74 0E C6 07 02 48 8B 5C 24 30 48 83 C4 20 5F C3" };
 static const ParsedPattern pat_WSSize{ "01 05 ? ? ? ? 8B 44 24 58 01 05 ? ? ? ? 85 D2 0F 84" };
 static const ParsedPattern pat_gConsole{ "48 8D 05 ? ? ? ? 48 89 2D ? ? ? ? 48 89 05 ? ? ? ? 89 2D ? ? ? ? 40 88 2D ? ? ? ? 48" };
 static const ParsedPattern pat_gDataHandler{ "48 83 3D ? ? ? ? 00 4D 8B F1 41 0F B6 F0 48 8B FA 48 8B D9 0F 84 ? ? ? ? 80 3D ? ? ? ? 00 48" };
-static const ParsedPattern pat_WorkbenchSelection{ "0F B6 84 02 ? ? ? ? 8B 8C 82 ? ? ? ? 48 03 CA FF E1 B0 01 48 83 C4 20 5B C3" };
+static const ParsedPattern pat_WorkbenchSelection{ "0F B6 84 02 ? ? ? ? 8B 8C 82 ? ? ? ? 48 03 CA FF E1 B0 01 48 83 C4 20 5B C3" }; // allows workbench to be highlighted
+static const ParsedPattern pat_WorkbenchAllowStore{ "8B 43 28 C1 E8 0B 41 3B C1 75 ?? 48 8B CB E8 ?? ?? ?? 00 84 C0 74 ?? 40 B7 01" }; // the final check to allow storing an object
 static const ParsedPattern pat_InvalidRefHandle{ "3B 05 ? ? ? ? 89 03 0F85 ? ? ? ? 48 8D 0D ? ? ? ? E8 ? ? ? ? 8B 57 28 33 C0 8B CA" };
-
-// =========================================================================================
-// NATIVE FUNCTION POINTERS & RUNTIME VARIABLES
-// =========================================================================================
-_SetMotionType_Native SetMotionType_native = nullptr;
-_ParseConsoleArg_Native ParseConsoleArg_native = nullptr;
-
-// Scale Functions
-_GetScale_Native GetScale_func = nullptr;
-uintptr_t* GetScale_pattern = nullptr;
-SInt32 GetScale_r32 = 0;
-_SetScale_Native SetScale_func = nullptr;
-uintptr_t* SetScale_pattern = nullptr;
-SInt32 SetScale_s32 = 0;
-
-// Sound Functions
-_PlayUISound_Native PlaySound_UI_func = nullptr;
-uintptr_t* PlaySound_UI_pattern = nullptr;
-SInt32 PlaySound_UI_r32 = 0;
-//_PlayFileSound_Native PlaySound_File_func = nullptr;
-//uintptr_t* PlaySound_File_pattern = nullptr;
-//SInt32 PlaySound_File_r32 = 0;
-
-// Console Reference Name Hook
-uintptr_t* cnref_original_call_pattern = nullptr; // Call site when ref is clicked
-uintptr_t* cnref_GetRefName_pattern = nullptr; // Target function pattern
-uintptr_t cnref_GetRefName_addr = 0; // Target function address
-SInt32 cnref_GetRefName_r32 = 0; // Rel32 offset

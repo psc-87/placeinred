@@ -1,6 +1,9 @@
 #include "main.h"
 #include "patterns.h"
 
+#define	XBYAK_NO_OP_NAMES
+#include "xbyak/xbyak.h"
+
 #include <array>
 #include <cctype> // std::tolower
 #include <cmath>
@@ -8,11 +11,9 @@
 #include <cstdint>
 #include <cstring>
 #include <excpt.h>
-#include <fstream>
 #include <future>
 #include <span>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 // F4SE API
@@ -21,6 +22,7 @@
 #include "f4se_common/Relocation.h"
 #include "f4se_common/SafeWrite.h"
 #include "f4se_common/Utilities.h"
+#include "f4se_common/BranchTrampoline.h"
 #include "f4se/ObScript.h"
 #include "f4se/GameExtraData.h"
 #include "f4se/GameForms.h"
@@ -29,56 +31,20 @@
 #include "f4se/NiObjects.h"
 #include "f4se/PluginAPI.h"
 #include "f4se/GameAPI.h"
-
-static void ReadINI();
+#include <algorithm>
+#include <unordered_map>
+#include <fstream>
+#include <utility>
 
 UInt32 pluginVersion = 17;
 PlaceInRed pir;
-
-// -----------------------------------------------------------------------------
-// Hard-coded memory check based on live debug pointer chain:
-// [[REF + 0xE0] + 0x120] + 0x14 == 0x000234E9
-// -----------------------------------------------------------------------------
-bool IsWorkshopRef_RawChain(void* refPtr)
-{
-	if (!refPtr) {
-		return false;
-	}
-
-	UInt8* rawRef = reinterpret_cast<UInt8*>(refPtr);
-
-	__try
-	{
-		// 1. Read [REF + 0xE0] -> Pointer to Base Form
-		void* baseFormPtr = *reinterpret_cast<void**>(rawRef + 0xE0);
-		if (!baseFormPtr) return false;
-
-		// 2. Read [BaseForm + 0x120] -> Pointer to BGSLocationRefType
-		UInt8* rawBaseForm = reinterpret_cast<UInt8*>(baseFormPtr);
-		void* lctrPtr = *reinterpret_cast<void**>(rawBaseForm + 0x120);
-		if (!lctrPtr) return false;
-
-		// 3. Read [LCTR + 0x14] -> 32-bit FormID
-		UInt8* rawLctr = reinterpret_cast<UInt8*>(lctrPtr);
-		UInt32 formID = *reinterpret_cast<UInt32*>(rawLctr + 0x14);
-
-		// 4. Compare against the Workshop FormID you found
-		return (formID == 0x000234E9);
-	}
-	__except (EXCEPTION_EXECUTE_HANDLER)
-	{
-		// Safely abort if the memory chain breaks at any point
-		return false;
-	}
-}
 
 
 
 // Simple function to read memory (safe version)
 static bool ReadMemory(uintptr_t addr, void* data, size_t len)
 {
-	if (!addr || !data || len == 0)
-		return false;
+	if (!addr || !data || len == 0) { return false; }
 
 	__try
 	{
@@ -101,13 +67,13 @@ static bool ReadWSModeFlag(uintptr_t offset)
 	if (!ReadMemory(uintptr_t(WSMode.addr) + offset, &value, sizeof(value)))
 		return false;
 
-	return value == WSMODE_TRUE;
+	return value == WSMODE_PLAYERINWSMODE;
 }
 
 // Determine if player is in workshop mode
 static bool IsPlayerInWorkshopMode()
 {
-	return ReadWSModeFlag(WSMODE_OFFSET_PLAYERINWSMODE);
+	return ReadWSModeFlag(WSMODE_PLAYERINWSMODE_OFFSET);
 }
 
 // Is the player grabbing the current workshop ref
@@ -120,21 +86,18 @@ static bool IsCurrentWSRefGrabbed()
 static float FloatFromString(std::string fString, float min = 0.001, float max = 999.999, float error = 0)
 {
 	float theFloat = 0;
-	try
-	{
+	try{
 		theFloat = std::stof(fString);
-	}
-	catch (...)
-	{
+	} catch (...){ 
 		return error;
 	}
-	//if (theFloat > min && theFloat < max) {
+
 	if (theFloat >= min && theFloat <= max) {
 		return theFloat;
 	}
-	else {
-		return error;
-	}
+	
+	return error;
+
 }
 
 static void StripNewLinesAndPipesToBuffer(const char* in, char* out, size_t outSize)
@@ -193,7 +156,7 @@ static std::uint32_t GetRel32FromPattern(std::uintptr_t instr, std::size_t start
 }
 
 // follow multiple pointers with offsets to get final address
-static uintptr_t GimmeMultiPointer(uintptr_t baseAddress, UInt32* offsets, UInt32 numOffsets)
+static uintptr_t GimmeMultiPointer(uintptr_t baseAddress, const UInt32* offsets, UInt32 numOffsets)
 {
 	if (!baseAddress)
 		return 0;
@@ -328,20 +291,22 @@ static bool FoundPatterns()
 		ParseConsoleArg.ptr     &&
         FirstConsole.ptr        &&
         FirstObScript.ptr       &&
-        SetScale_pattern    &&
-        GetScale_pattern    &&
+        SetScale_pattern        &&
+        GetScale_pattern        &&
         CurrentWSRef.ptr        &&
         WSMode.ptr              &&
-        TheFO4Console.ptr            &&
+        TheFO4Console.ptr       &&
         A && B && C             &&
         D && E && F && G && H   &&
         J && Y && R && CORRECT  &&
-        wstimer && gsnap && osnap && outlines &&
+        wstimer && gsnap        &&
+		osnap && outlines       &&
         WSSize.ptr              &&
         Zoom.ptr                &&
         Rotate.ptr              &&
         SetMotionType.ptr       &&
         WorkbenchSelection.ptr  &&
+        workbench_allow_store            &&
 		InvalidRefHandle.ptr
 		)
     {
@@ -401,6 +366,8 @@ static void LogPatterns()
 	Log("SetMotionType   ", SetMotionType.ptr, SetMotionType.r32);
 	Log("SetScale        ", SetScale_pattern, SetScale_s32);
 	Log("WBSelect        ", WorkbenchSelection.ptr, WorkbenchSelection.r32);
+	Log("wballowstore    ", workbench_allow_store, (uintptr_t)workbench_allow_store - base);
+	Log("wballowstorejmp ", workbench_store_return, (uintptr_t)workbench_store_return - base);
 	Log("WSTimer         ", wstimer, (uintptr_t)wstimer - base);
 	Log("WSSizeFloats    ", WSSize.addr, (uintptr_t)WSSize.addr - base);
 	Log("WSSizeFinder    ", WSSize.ptr, (uintptr_t)WSSize.ptr - base);
@@ -409,10 +376,11 @@ static void LogPatterns()
 	pir.debuglog.FormattedMessage("--------------------------------------------------------------------------------");
 }
 
-
-// return the currently selected workshop ref with some safety checks
+// Return the currently selected workshop ref with some safety checks
 static TESObjectREFR* GetCurrentWSRef(bool bOnlySelectReferences = true)
 {
+	// Short-circuiting: Fast pointer checks happen first, preventing the potentially 
+	// slower IsPlayerInWorkshopMode() function call from executing if the pointers are null.
 	if (!CurrentWSRef.ptr || !CurrentWSRef.addr || !IsPlayerInWorkshopMode())
 		return nullptr;
 
@@ -424,21 +392,101 @@ static TESObjectREFR* GetCurrentWSRef(bool bOnlySelectReferences = true)
 
 	__try
 	{
-		// Native member lookup safely catches bad pointers / unmapped memory pages
-		if (!ref->formID || ref->formID == 0)
+		// 2. REDUNDANCY REMOVED: "!ref->formID" and "ref->formID == 0" compile to the exact 
+		// same assembly instruction. Checking both wastes a branch evaluation. 
+		if (ref->formID == 0)
 			return nullptr;
 
+		// 3. 0x40 is kFormType_REFR
 		if (bOnlySelectReferences && ref->formType != 0x40)
 			return nullptr;
 	}
 	__except (EXCEPTION_EXECUTE_HANDLER)
 	{
+		// Catch bad memory access if GimmeMultiPointer returned garbage
 		return nullptr;
 	}
 
 	return ref;
 }
 
+
+// check if the TESObjectREFR's base form has forced location reference type (LCRT) 000234E9
+// this LCRT is only on the main workshop workbench and some quests, so we check it, and prevent storing when workbench move is allowed
+// storing the workbench would corrupt a save
+static bool bIsWorkshopRefBase_LCRT_000234E9(TESObjectREFR* ref)
+{
+	if (!ref || !ref->baseForm) {
+		return false;
+	}
+
+	__try
+	{
+		// Lookup 1: Read the pointer at [BaseForm + 0x120]
+		uintptr_t lctr = *reinterpret_cast<uintptr_t*>(reinterpret_cast<uintptr_t>(ref->baseForm) + 0x120);
+
+		// Lookup 2: If the pointer isn't null, read [Pointer + 0x14] and check the FormID
+		if (lctr) {
+			return (*reinterpret_cast<UInt32*>(lctr + 0x14) == 0x000234E9);
+		}
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER)
+	{
+		return false;
+	}
+
+	return false;
+}
+
+// patch an extra check into the workbench store logic to prevent storing workbench when moving is allowed
+static bool InitWorkbenchMovePatch() {
+
+	// --- UPDATED ADDRESSES ---
+	if (!workbench_allow_store || !workbench_store_return || !WorkbenchSelection.addr) {
+		pirlog("Error: workbench pointers not found");
+		return false;
+	}
+
+	struct ExtraWorkbenchStoreCheck : Xbyak::CodeGenerator {
+		ExtraWorkbenchStoreCheck(uintptr_t retAddr) {
+
+			// shadow space
+			sub(rsp, 0x20);
+
+			// 2. Arg1 (RCX) = TESObjectREFR (RBX). Call our C++ logic.
+			mov(rcx, rbx);
+			mov(rax, (uintptr_t)&bIsWorkshopRefBase_LCRT_000234E9); //(rcx = first argument)
+			call(rax);
+
+			// shadow space
+			add(rsp, 0x20);
+
+			// 4. Translate C++ bool to Game Logic
+			// True (AL=1) -> DIL=00 (Block Store)
+			// False(AL=0) -> DIL=01 (Allow Store)
+			test(al, al);
+			setz(dil);
+
+			mov(rax, retAddr);
+			jmp(rax);
+		}
+	};
+
+	ExtraWorkbenchStoreCheck blob(workbench_store_return);
+
+	void* codeBuf = g_branchTrampoline.Allocate(blob.getSize());
+
+	// Ensure the trampoline actually gave us memory
+	if (!codeBuf) {
+		pirlog("Error: g_branchTrampoline failed to allocate trampoline memory for ExtraWorkbenchStoreCheck!");
+		return false;
+	}
+
+	memcpy(codeBuf, blob.getCode(), blob.getSize());
+	workbench_store_extra_check_addr = (uintptr_t)codeBuf;
+
+	return true;
+}
 
 // debug use only - detailed log of TESObjectREFR
 static void LogWorkshopReference()
@@ -450,7 +498,7 @@ static void LogWorkshopReference()
 		return;
 	}
 
-	_MESSAGE("LCRT 234E9: %s", IsWorkshopRef_RawChain(ref) ? "YES" : "NO");
+	_MESSAGE("LCRT 234E9: %s", bIsWorkshopRefBase_LCRT_000234E9(ref) ? "YES" : "NO");
 	_MESSAGE("----------------------------------------------");
 	//
 	// Identity
@@ -589,9 +637,9 @@ static void LockUnlockWSRef(bool unlock = false, bool sound = false)
 	}
 
 	if (vm && ref) {
-		SetMotionType_native(vm, NULL, ref, motion, false);
+		SetMotionType_Native(vm, NULL, ref, motion, false);
 		if (sound) {
-			PlaySound_UI_func(sLockObjectSound);
+			PlaySound_Native(sLockObjectSound);
 		}
 	}
 }
@@ -612,11 +660,11 @@ static void ToggleLockWSRef(bool sound = false)
 	pir.uLockUnlockLastMotionType = (pir.uLockUnlockLastMotionType == 2) ? 1 : 2;
 
 	// Apply the new toggled state from the global
-	SetMotionType_native(vm, 0, ref, pir.uLockUnlockLastMotionType, false);
+	SetMotionType_Native(vm, 0, ref, pir.uLockUnlockLastMotionType, false);
 
 	// Play sound if requested
 	if (sound) {
-		PlaySound_UI_func(sLockObjectSound);
+		PlaySound_Native(sLockObjectSound);
 	}
 }
 
@@ -629,33 +677,6 @@ static constexpr unsigned int ConsoleSwitch(const char* s)
 		hash = ((hash << 5) + hash) ^ static_cast<unsigned char>(*s++); // (hash * 33) ^ c
 	}
 	return hash;
-}
-
-// print to console (copied from f4se + modified to use pattern)
-static void PIR_ConsolePrintOld(const char* fmt, ...)
-{
-	if (TheFO4Console.ptr && TheFO4Console.addr && pir.PrintConsoleMessages)
-	{
-		ConsoleManager* mgr = (ConsoleManager*)TheFO4Console.addr;
-		if (mgr) {
-			va_list args;
-			va_start(args, fmt);
-			char buf[4096];
-			int len = vsprintf_s(buf, sizeof(buf), fmt, args);
-			if (len > 0)
-			{
-				// add newline and terminator, truncate if not enough room
-				if (len > (sizeof(buf) - 2))
-					len = sizeof(buf) - 2;
-
-				buf[len] = '\n';
-				buf[len + 1] = 0;
-
-				CALL_MEMBER_FN(mgr, Print)(buf);
-			}
-			va_end(args);
-		}
-	}
 }
 
 // print to console (copied from f4se + modified to use pattern)
@@ -728,7 +749,7 @@ static bool SetCurrentRefScale(float newScale)
 {
 	TESObjectREFR* ref = GetCurrentWSRef();
 	if (ref) {
-		SetScale_func(ref, newScale);
+		SetScale_Native(ref, newScale);
 		return true;
 	}
 	return false;
@@ -754,40 +775,19 @@ static void MoveRefToSelf(int repeat = 0)
 	}
 }
 
-// Modify the scale of the current workshop reference by a percent.
-static bool ModCurrentRefScaleOld(float fMultiplyAmount)
-{
-	TESObjectREFR* ref = GetCurrentWSRef();
-	if (ref) {
-		float oldscale = GetScale_func(ref);
-		float newScale = oldscale * (fMultiplyAmount);
-		if (newScale > 9.9999f) { newScale = 9.9999f; }
-		if (newScale < 0.0001f) { newScale = 0.0001f; }
-		SetScale_func(ref, newScale);
-
-		// fix jitter only if player isnt grabbing the item
-		if (IsCurrentWSRefGrabbed() == false) {
-			MoveRefToSelf(1);
-		}
-
-		return true;
-	}
-	return false;
-}
-
 // Modify the scale of the current workshop reference by a percent, with improved jitter handling.
 static bool ModCurrentRefScale(float fMultiplyAmount)
 {
 	TESObjectREFR* ref = GetCurrentWSRef();
 	if (!ref) return false;
 
-	float oldscale = GetScale_func(ref);
+	float oldscale = GetScale_Native(ref);
 	float newScale = oldscale * fMultiplyAmount;
 
 	if (newScale > 9.9999f) newScale = 9.9999f;
 	if (newScale < 0.0001f) newScale = 0.0001f;
 
-	SetScale_func(ref, newScale);
+	SetScale_Native(ref, newScale);
 
 	if (!IsCurrentWSRefGrabbed()){
 		NiNode* rootNode = ref->GetObjectRootNode();		
@@ -1122,7 +1122,7 @@ static bool Toggle_ConsoleNameRef()
 // toggle moving the workbench by modifying vtable lookup bit for workbench type
 static bool Toggle_WorkbenchMove()
 {
-	if (WorkbenchSelection.ptr && WorkbenchSelection.addr) {
+	if (WorkbenchSelection.ptr && WorkbenchSelection.addr && workbench_allow_store && workbench_store_return && workbench_store_extra_check_addr) {
 
 		UInt8 AllowSelect1F = 0xFF; // 0xFF sentinel to indicate an error if we can't read the memory
 
@@ -1132,23 +1132,49 @@ static bool Toggle_WorkbenchMove()
 			return false;
 		}
 
-		// game default - disable selecting workbench
+		// Keep track of whether we've generated the trampoline hook yet
+		static bool wbinitdone = false;
+
+		// --- TURNING OFF (Currently Allowed, switching to Game Default) ---
 		if (AllowSelect1F == 0x00) {
 			SafeWrite8((uintptr_t)WorkbenchSelection.addr + 0x05, 0x01);
+
+			// Only restore the old bytes if we actually generated the hook at least once
+			if (wbinitdone) {
+				SafeWriteBuf((uintptr_t)workbench_allow_store, WBSTORE_OLD, 5);
+			}
+
 			PIR_ConsolePrint("Workbench move disabled (game default).");
 			return true;
 		}
 
-		// allows selecting and storing workbench
+		// --- TURNING ON (Currently Disabled, switching to Allowed) ---
 		if (AllowSelect1F == 0x01) {
 			SafeWrite8((uintptr_t)WorkbenchSelection.addr + 0x05, 0x00);
-			PIR_ConsolePrint("Workbench move allowed! Don't accidentally store it or your save will be corrupted! Turn this OFF when you're done!");
+
+			if (!wbinitdone) {
+				// FIRST TIME: Let the trampoline calculate and write the relative E9 jump
+				g_branchTrampoline.Write5Branch((uintptr_t)workbench_allow_store, workbench_store_extra_check_addr);
+
+				// Cache those newly generated hook bytes so we can quickly swap them later
+				memcpy(WBSTORE_NEW, (void*)workbench_allow_store, 5);
+
+				wbinitdone = true;
+			}
+			else {
+				// SUBSEQUENT TIMES: Hook is already calculated, just write the cached bytes back
+				SafeWriteBuf((uintptr_t)workbench_allow_store, WBSTORE_NEW, 5);
+			}
+
+			PIR_ConsolePrint("Workbench move allowed!");
 			return true;
 		}
 
 		pirlog("Toggle failed. The WorkbenchSelection vtable bit is an invalid value (not 1 or 0).");
 		return false;
 	}
+
+	pirlog("Toggle failed. The WorkbenchSelection pointers arent set.");
 	return false;
 }
 
@@ -1257,8 +1283,8 @@ static bool Toggle_PlaceInRed()
 // play sound using form name
 static void PIR_PlayUISound(const char* sound)
 {
-	if (PlaySound_UI_func) {
-		PlaySound_UI_func(sound);
+	if (PlaySound_Native) {
+		PlaySound_Native(sound);
 	}
 }
 
@@ -1307,7 +1333,7 @@ static constexpr char console_help_msg[] =
 // Called every time the console command runs
 static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thisObj, void* containingObj, void* scriptObj, void* locals, double* result, void* opcodeOffsetPtr)
 {
-	if (!ParseConsoleArg_native || !ParseConsoleArg.ptr || (ParseConsoleArg.r32 == 0)) {
+	if (!ParseConsoleArg_Native || !ParseConsoleArg.ptr || (ParseConsoleArg.r32 == 0)) {
 		pirlog("Failed to execute the console command!");
 		return false;
 	}
@@ -1315,7 +1341,7 @@ static bool ExecuteConsole(void* paramInfo, void* scriptData, TESObjectREFR* thi
 	std::array<char, 1024> param1{};
 	std::array<char, 1024> param2{};
 		
-	bool consoleresult = ParseConsoleArg_native(
+	bool consoleresult = ParseConsoleArg_Native(
 		paramInfo,
 		scriptData,
 		opcodeOffsetPtr,
@@ -1551,130 +1577,6 @@ static bool PatchConsole(const char* hijacked_cmd_fullname)
 	return false;
 }
 
-static std::unordered_map<std::string, std::string> GetIniMapOld(const std::string& filepath)
-{
-	std::unordered_map<std::string, std::string> iniData;
-	std::ifstream file(filepath);
-
-	if (!file.is_open()) {
-		return iniData;           // or throw / log
-	}
-
-	std::string line;
-
-	// Trim helper (in-place, efficient)
-	auto Trim = [](std::string& s) {
-		s.erase(0, s.find_first_not_of(" \t\r\n"));
-		if (!s.empty()) {
-			s.erase(s.find_last_not_of(" \t\r\n") + 1);
-		}
-		};
-
-	while (std::getline(file, line)) {
-		Trim(line);
-
-		// Skip empty, comments, sections
-		if (line.empty() || line[0] == ';' || line[0] == '#' || line[0] == '[') {
-			continue;
-		}
-
-		// Remove inline comment (if any)
-		size_t comment = line.find_first_of(";#");
-		if (comment != std::string::npos) {
-			line.erase(comment);
-			Trim(line);               // clean up after erasing
-		}
-
-		size_t eq = line.find('=');
-		if (eq != std::string::npos) {
-			std::string key = line.substr(0, eq);
-			std::string val = line.substr(eq + 1);
-
-			Trim(key);
-			Trim(val);
-
-			if (!key.empty()) {
-				iniData[std::move(key)] = std::move(val);
-			}
-		}
-	}
-	return iniData;
-}
-
-static void ReadINIOld()
-{
-	const char* str_hardcoded = "hardcoded (not found in INI)";
-	const char* found_in_ini = "ini";
-
-	pirlog("Reading PlaceInRed.ini");
-
-	// Read disk ONCE into the map
-	auto iniMap = GetIniMapOld(GetPluginINIPath());
-
-	// Helper to get string from our map instead of disk
-	auto GetValue = [&](const char* key) -> std::string {
-		auto it = iniMap.find(key);
-		return (it != iniMap.end()) ? it->second : "";
-		};
-
-	// 1. Lambda for standard bool toggles (Memory Patching)
-	auto ApplyToggle = [&](const char* key, bool& currentFlag, auto toggleFunc, bool defaultEnabled)
-		{
-			std::string val = GetValue(key);
-			bool wantEnabled = GetBoolFromINIString(val, defaultEnabled);
-
-			if (wantEnabled != currentFlag)
-			{
-				toggleFunc();
-				pirlog("%s=%d (ini, toggled)", key, wantEnabled);
-			}
-			else
-			{
-				pirlog("%s=%d (ini, unchanged)", key, wantEnabled);
-			}
-		};
-
-	// 2. Lambda for float settings
-	auto ApplyFloat = [&](const char* key, float& target, float minVal, float maxVal, float defVal)
-		{
-			std::string str = GetValue(key);
-			if (!str.empty())
-			{
-				float f = FloatFromString(str, minVal, maxVal, 0.0f);
-				target = (f > 0.0f) ? f : defVal;
-			}
-			pirlog("%s=%.4f (%s)", key, target, str.empty() ? str_hardcoded : found_in_ini);
-		};
-
-	// ------------------- Boolean Toggles -------------------
-	ApplyToggle("PLACEINRED_ENABLED", pir.PLACEINRED_ENABLED, Toggle_PlaceInRed, false);
-	ApplyToggle("OBJECTSNAP_ENABLED", pir.OBJECTSNAP_ENABLED, Toggle_ObjectSnap, true);
-	ApplyToggle("GROUNDSNAP_ENABLED", pir.GROUNDSNAP_ENABLED, Toggle_GroundSnap, true);
-	ApplyToggle("WORKSHOPSIZE_ENABLED", pir.WORKSHOPSIZE_ENABLED, Toggle_WorkshopSize, false);
-	ApplyToggle("OUTLINES_ENABLED", pir.OUTLINES_ENABLED, Toggle_Outlines, true);
-	ApplyToggle("ACHIEVEMENTS_ENABLED", pir.ACHIEVEMENTS_ENABLED, Toggle_Achievements, false);
-	ApplyToggle("ConsoleNameRef_ENABLED", pir.ConsoleNameRef_ENABLED, Toggle_ConsoleNameRef, false);
-	ApplyToggle("bAllowConsoleInSurvival", pir.bAllowConsoleInSurvival, Toggle_SurvivalConsole, false);
-
-	// ------------------- Pure Variables --------------------
-	// PrintConsoleMessages (Direct assignment, no toggle hook required)
-	std::string printVal = GetValue("PrintConsoleMessages");
-	pir.PrintConsoleMessages = GetBoolFromINIString(printVal, true);
-	pirlog("PrintConsoleMessages=%d (%s)", pir.PrintConsoleMessages, printVal.empty() ? str_hardcoded : found_in_ini);
-
-	// ------------------- Slow Mode -------------------------
-	ApplyFloat("fSlowerROTATE", pir.fSlowerROTATE, 0.01f, 50.0f, 0.5000f);
-	ApplyFloat("fSlowerZOOM", pir.fSlowerZOOM, 0.01f, 50.0f, 1.0000f);
-	ApplyToggle("SLOW_ENABLED", pir.SLOW_ENABLED, Toggle_SlowZoomAndRotate, false);
-
-	// ------------------- Custom Rotation -------------------
-	ApplyFloat("fRotateDegreesCustomX", pir.fRotateDegreesCustomX, 0.001f, 360.0f, 3.6000f);
-	ApplyFloat("fRotateDegreesCustomY", pir.fRotateDegreesCustomY, 0.001f, 360.0f, 3.6000f);
-	ApplyFloat("fRotateDegreesCustomZ", pir.fRotateDegreesCustomZ, 0.001f, 360.0f, 3.6000f);
-
-	pirlog("Finished parsing INI from memory.");
-}
-
 // 2. Your complete, compiling INI parser
 static void ToLowerCase(std::string& str) {
 	std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return std::tolower(c); });
@@ -1886,6 +1788,7 @@ static void InitPIR()
 	vec_futures.emplace_back(FindPatternAsyncV2(WSSize.ptr, pat_WSSize));
 	vec_futures.emplace_back(FindPatternAsyncV2(TheFO4Console.ptr, pat_gConsole));
 	vec_futures.emplace_back(FindPatternAsyncV2(WorkbenchSelection.ptr, pat_WorkbenchSelection));
+	vec_futures.emplace_back(FindPatternAsyncV2(workbench_allow_store, pat_WorkbenchAllowStore));
 	vec_futures.emplace_back(FindPatternAsyncV2(InvalidRefHandle.ptr, pat_InvalidRefHandle));
 
 	// Wait for all async tasks to complete
@@ -1946,6 +1849,15 @@ static void InitPIR()
 		WorkbenchSelection.addr = WorkbenchSelection.r32 ? (pir.FO4BaseAddr + (uintptr_t)WorkbenchSelection.r32) : 0;
 	}
 
+	// wballowstore setup
+	if (workbench_allow_store) {
+		// MUST be 0x17 to safely land on "40 B7 01" (mov dil, 01)
+		workbench_allow_store = (uintptr_t*)((uintptr_t)workbench_allow_store + 0x17);
+
+		// MUST be 0x39 to safely land exactly on "48 85 DB" (test rbx, rbx)
+		workbench_store_return = (uintptr_t)workbench_allow_store + 0x39;
+	}
+
 	// InvalidRefPointer
 	if (InvalidRefHandle.ptr) {
 		InvalidRefHandle.r32 = GetRel32FromPattern((uintptr_t)InvalidRefHandle.ptr, 0x02, 0x06, 0x00);
@@ -1962,7 +1874,7 @@ static void InitPIR()
 	if (SetScale_pattern) {
 		SetScale_s32 = GetRel32FromPattern((uintptr_t)SetScale_pattern, 0x01, 0x05, 0x00);
 		if (SetScale_s32) {
-			SetScale_func = RelocAddr<_SetScale_Native>(SetScale_s32);
+			SetScale_Native = RelocAddr<_SetScale_Native>(SetScale_s32);
 		}
 	}
 
@@ -1970,7 +1882,7 @@ static void InitPIR()
 	if (GetScale_pattern) {
 		GetScale_r32 = GetRel32FromPattern((uintptr_t)GetScale_pattern, 0x08, 0x0C, 0x00);
 		if (GetScale_r32) {
-			GetScale_func = RelocAddr<_GetScale_Native>(GetScale_r32);
+			GetScale_Native = RelocAddr<_GetScale_Native>(GetScale_r32);
 		}
 	}
 
@@ -1990,7 +1902,7 @@ static void InitPIR()
 	if (ParseConsoleArg.ptr) {
 		ParseConsoleArg.r32 = uintptr_t(ParseConsoleArg.ptr) - pir.FO4BaseAddr;
 		if (ParseConsoleArg.r32) {
-			ParseConsoleArg_native = RelocAddr<_ParseConsoleArg_Native>(ParseConsoleArg.r32);
+			ParseConsoleArg_Native = RelocAddr<_ParseConsoleArg_Native>(ParseConsoleArg.r32);
 		}
 	}
 
@@ -2014,7 +1926,7 @@ static void InitPIR()
 	if (SetMotionType.ptr) {
 		SetMotionType.r32 = uintptr_t(SetMotionType.ptr) - pir.FO4BaseAddr;
 		if (SetMotionType.r32) {
-			SetMotionType_native = RelocAddr<_SetMotionType_Native>(SetMotionType.r32);
+			SetMotionType_Native = RelocAddr<_SetMotionType_Native>(SetMotionType.r32);
 		}
 	}
 	
@@ -2022,7 +1934,7 @@ static void InitPIR()
 	if (PlaySound_UI_pattern) {
 		PlaySound_UI_r32 = uintptr_t(PlaySound_UI_pattern) - pir.FO4BaseAddr;
 		if (PlaySound_UI_r32) {
-			PlaySound_UI_func = RelocAddr<_PlayUISound_Native>(PlaySound_UI_r32);
+			PlaySound_Native = RelocAddr<_PlaySound_Native>(PlaySound_UI_r32);
 		}
 	}
 	
@@ -2075,6 +1987,14 @@ extern "C" {
 
 		// toggle defaults
 		ReadINI();
+
+		// Initialize the trampoline memory pool
+		if (!g_branchTrampoline.Create(1024 * 64)) {
+			return false;
+		}
+
+		// Run your custom hook initialization
+		InitWorkbenchMovePatch();
 
 		// plugin loaded
 		pirlog("Plugin initialized!");
